@@ -1,0 +1,19 @@
+# --- Secrets: NEVER commit these ---
+.streamlit/secrets.toml
+.env
+*.key
+*.pem
+
+# --- Python / caches ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- Generated data (large / transient) ---
+data/work/
+data/out/
+data/cache/
+data/refs/
+data/*.log
+
+.pytest_cache/

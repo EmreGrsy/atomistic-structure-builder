@@ -1,0 +1,13 @@
+# Core Phase 0 (deterministic spine)
+ase>=3.23
+requests
+moltemplate            # provides moltemplate.sh (LAMMPS data file generation)
+# packmol is installed as a binary via conda (see environment / README)
+
+# Viewer: we render with 3Dmol.js via CDN (zero-install). py3Dmol optional for notebooks.
+py3Dmol
+
+# Later phases
+# streamlit
+# langgraph
+# openai
