@@ -545,6 +545,13 @@ def main() -> None:
     out = ROOT / "docs" / "index.html"
     out.parent.mkdir(exist_ok=True)
     out.write_text(html)
+    # mirror into ./static so the app's Documentation link serves the pages
+    static = ROOT / "static"
+    static.mkdir(exist_ok=True)
+    (static / "index.html").write_text(html)
+    ep = ROOT / "docs" / "eval_prompts.html"
+    if ep.exists():
+        (static / "eval_prompts.html").write_text(ep.read_text())
     print(f"wrote {out} ({len(html)} bytes, {len(cases)} showcases, "
           f"metrics={'yes' if metrics_section() else 'no'})")
 

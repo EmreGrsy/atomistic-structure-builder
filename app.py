@@ -26,13 +26,12 @@ from ase.io import write as ase_write
 from mtagent import clarify, ground
 from mtagent.assemble import RELATIONS
 from mtagent.execute import run_snippet
-from mtagent.llm import have_openai_key
 from mtagent.propose import propose
 from mtagent.registry import BUILDERS, slug
 from mtagent.verify import verify_atoms
 from mtagent.viewer import build_html
 
-st.set_page_config(page_title="Moltemplate Agent", layout="wide")
+st.set_page_config(page_title="Atomistic Structure Builder", layout="wide")
 st.markdown("""<style>
 /* ChatGPT-like chat: no role avatars, user turns in a soft bubble */
 [data-testid^="stChatMessageAvatar"], [data-testid^="chatAvatarIcon"] {
@@ -40,7 +39,7 @@ st.markdown("""<style>
 .stChatMessage { gap: 0.25rem; }
 .stChatMessage:has([data-testid="stChatMessageAvatarUser"]),
 .stChatMessage:has([data-testid="chatAvatarIcon-user"]) {
-    background: rgba(128, 128, 128, 0.13);   /* readable in light AND dark theme */
+    background: rgba(163, 146, 127, 0.16);   /* warm, matches the docs palette */
     border-radius: 14px; padding: 10px 14px; }
 /* don't dim/fade content while the script reruns */
 [data-stale="true"] { opacity: 1 !important; pointer-events: auto !important; }
@@ -54,9 +53,6 @@ APP_NAME = "Atomistic Structure Builder"
 APP_VERSION = "0.1.0"
 
 st.title(APP_NAME)
-st.caption("A knowledge graph grounded atomistic structure builder")
-st.caption("KG grounded structure builder, the code you see is the code that runs. "
-           "Geometry only (MD equilibration is a later pipeline stage).")
 
 SS = st.session_state
 for k, v in (("messages", []), ("spec", None), ("gap", None), ("final", None),
@@ -330,82 +326,11 @@ def build_all() -> None:
 
 # ----------------------------------- UI ---------------------------------------
 
-_EXAMPLES = (
-    ("Solvated nanoparticle", "a 4 nm magnetite nanoparticle in water"),
-    ("Confined liquid", "20 ethanol molecules inside a (10,10) carbon nanotube"),
-    ("Solid liquid interface", "water on a rutile TiO2 (110) surface"),
-    ("2D confinement", "100 water molecules between two graphene sheets"),
-    ("Nanoparticle supercrystal", "an FCC supercrystal of 4 magnetite nanoparticles"),
-    ("Hetero sandwich", "water between a magnetite 001 slab and a rutile 110 slab"),
-)
-
 with st.sidebar:
-    st.markdown(f"**{APP_NAME}** · v{APP_VERSION}")
-    st.caption("KG grounded structure builder, the code you see is the code "
-               "that runs. Geometry only.")
-
-    with st.expander("Documentation", expanded=False):
-        st.markdown("""
-**Overview.** Natural language requests are converted into validated,
-atom resolved 3D structures. The output of every build is the geometry
-itself: an interactive viewer and an `.xyz` download carrying the full
-simulation cell.
-
-**Pipeline.**
-1. **Parse.** the request is decomposed into typed constituents
-   (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
-   nanotube) and the relations between them (*inside, around, coated_by,
-   on, between*).
-2. **Retrieve.** real function signatures and constraints are pulled
-   from two knowledge graphs. ASE: 2,392 nodes (one per function or
-   class, with its real signature) and connectivity edges to their
-   parent modules, introspected from the installed package.
-   Moltemplate: 60 nodes (the .lt constructs) with 23 connectivity
-   edges and 8 constraint rules, built once from the official manual.
-   Generation never runs without this evidence.
-3. **Clarify.** only parameters that are genuinely missing are asked
-   for; everything else takes registry defaults.
-4. **Propose.** a build snippet is written per constituent with the
-   retrieved evidence in-prompt. The snippet shown is the code executed.
-5. **Validate & build.** Three gates: static validation against the
-   knowledge graphs; sandboxed execution; geometric verification
-   (finite coordinates, no unphysical contacts).
-6. **Assemble.** constituents are combined per the stated relations:
-   packmol for liquids (solvation, films, fills), Moltemplate for
-   repeated units (ligand shells, nanoparticle superlattices).
-
-**Toolchain.** ASE builds the unit · packmol packs liquids ·
-Moltemplate assembles repeated structures · PubChem supplies molecular
-coordinates · OpenAI parses language · 3Dmol.js renders.
-
-**Materials.** Any element (conventional cells; fcc/bcc/hcp/diamond),
-16 compounds (magnetite, rutile & anatase TiO2, quartz, ZnO, GaAs, GaN,
-Al2O3, Fe2O3, MgO, NiO, CeO2, SrTiO3, NaCl, FeS2, MoS2) and 2D sheets
-(graphene, hBN). Any Miller termination incl. 4 index hexagonal
-notation; NxM supercells; hetero interfaces with automatic lattice
-matching (strain recorded, 12% cap).
-
-**Scope.** Structures are geometric: crystal truncations are not
-reconstructed and assemblies are not equilibrated.
-""")
-
-    st.markdown("**Examples**")
-    for label, q in _EXAMPLES:
-        if st.button(label, key=f"ex_{label}", help=q, use_container_width=True):
-            SS["queued_prompt"] = q
-
-    with st.expander("Registry (single source of truth)"):
-        for b in BUILDERS.values():
-            st.markdown(f"**{b.name}**: {b.description}")
-        st.markdown("**relations**: " + ", ".join(RELATIONS))
-
-    st.divider()
-    st.markdown(("OpenAI: parse + propose" if have_openai_key()
-                 else "no OpenAI key: keyword parse + canonical snippets"))
-    if st.button("Start over"):
-        for k in ("messages", "spec", "gap", "final", "proposals", "results", "prop_cache"):
-            SS.pop(k, None)
-        st.rerun()
+    st.markdown(f"### {APP_NAME}")
+    st.markdown("A knowledge graph grounded atomistic structure builder.")
+    st.link_button("Documentation and examples", "/app/static/index.html",
+                   use_container_width=True)
 
 if not SS.messages:
     st.info('Tell me what to build, e.g. *"a carbon nanotube with methanol inside"* or '
