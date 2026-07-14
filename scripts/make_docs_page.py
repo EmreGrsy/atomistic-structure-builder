@@ -161,8 +161,7 @@ def build_showcases() -> list[dict]:
         caption="A single solvated ion at the tube center, water packed "
                 "around it (Packmol cylinder fill); the enclosing tube wall "
                 "renders translucent so the confined phase stays visible.",
-        solid=solid, trans=trans, cellsrc=trans,
-        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["tube axis", [0, 0, 1]]]))
+        solid=solid, trans=trans, cellsrc=trans))
 
     oleic = get_molecule("oleic acid")
 
@@ -177,8 +176,7 @@ def build_showcases() -> list[dict]:
         prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
         caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
-        solid=solid, trans=trans, cellsrc=solid,
-        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["[110]", [0, 0, 1]]]))
+        solid=solid, trans=trans, cellsrc=solid))
 
     def _graphene():
         sheet = build_sheet("graphene", width=24, vacuum=10)
@@ -191,8 +189,7 @@ def build_showcases() -> list[dict]:
         prompt="80 water molecules between two graphene sheets",
         caption="A water film packed between the sheets with symmetric "
                 "wall clearances; one periodic cell.",
-        solid=solid, trans=trans, cellsrc=solid,
-        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["[001]", [0, 0, 1]]]))
+        solid=solid, trans=trans, cellsrc=solid))
 
     seq = "ABCABCABAB"
 
@@ -212,8 +209,7 @@ def build_showcases() -> list[dict]:
                 "fcc supercrystal carrying a stacking fault; Moltemplate "
                 "instantiates the particle per site, oleic acid fills the "
                 "interstitial space (translucent).",
-        solid=solid, trans=trans, cellsrc=solid,
-        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["stacking axis", [0, 0, 1]]]))
+        solid=solid, trans=trans, cellsrc=solid))
 
     def _hetero():
         mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
@@ -227,8 +223,7 @@ def build_showcases() -> list[dict]:
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
         caption="Supercells are lattice matched automatically; the top slab "
                 "is strained epitaxially (recorded, 12% cap).",
-        solid=solid, trans=trans, cellsrc=solid,
-        axes=[["[100]", [1, 0, 0]], ["[010]", [0, 1, 0]], ["[001]", [0, 0, 1]]]))
+        solid=solid, trans=trans, cellsrc=solid))
     return cases
 
 
@@ -380,7 +375,6 @@ def main() -> None:
             "solid": _xyz(c["solid"], c["title"]),
             "trans": _xyz(c["trans"], c["title"]) if c["trans"] is not None else None,
             "edges": _edges([c["cellsrc"]]),
-            "axes": c.get("axes"),
         }
         natoms = sum(len(p) for p in parts)
         cards.append(f"""
@@ -389,8 +383,7 @@ def main() -> None:
           <div class="cardtitle">{c['title']}</div>
           <div class="prompt">&ldquo;{c['prompt']}&rdquo;</div>
         </div>
-        <div class="vwrap"><div class="viewer" id="v{i}"></div>
-          <canvas class="gizmo" id="g{i}" width="80" height="80"></canvas></div>
+        <div class="viewer" id="v{i}"></div>
         <div class="caption">{c['caption']} <span class="n">{natoms} atoms.</span></div>
       </div>""")
 
@@ -421,9 +414,7 @@ def main() -> None:
   .prompt {{ font-size:12.5px; margin-top:3px; font-family:ui-monospace,monospace;
              background:{BG}; border:1px solid {CELLC}55; border-radius:6px;
              padding:4px 8px; display:inline-block; }}
-  .vwrap {{ position:relative; }}
   .viewer {{ width:100%; height:380px; position:relative; }}
-  .gizmo {{ position:absolute; left:0; bottom:0; pointer-events:none; }}
   .caption {{ padding:8px 14px 12px; font-size:12.5px; opacity:.8; }}
   .n {{ opacity:.7; }}
   code {{ background:#f5f0e8; padding:1px 5px; border-radius:4px; }}
@@ -493,56 +484,6 @@ def main() -> None:
   const DATA = {json.dumps(data)};
   const RADII = {json.dumps(radii)};
   const COLORS = {json.dumps(CUSTOM_COLORS)};
-  const AXES = [["[100]", [1,0,0]], ["[010]", [0,1,0]], ["[001]", [0,0,1]]];
-  function rotv(q, v) {{
-    const [x, y, z, w] = q;
-    const tx = 2*(y*v[2]-z*v[1]), ty = 2*(z*v[0]-x*v[2]), tz = 2*(x*v[1]-y*v[0]);
-    return [v[0]+w*tx+(y*tz-z*ty), v[1]+w*ty+(z*tx-x*tz), v[2]+w*tz+(x*ty-y*tx)];
-  }}
-  function drawGizmo(canvas, q, AXES) {{
-    const ctx = canvas.getContext("2d");
-    const c = 40, L = 19, AH = 5;
-    ctx.clearRect(0, 0, 80, 80);
-    const proj = AXES.map(([lab, v]) => [lab, rotv(q, v)])
-                     .sort((p, r) => p[1][2] - r[1][2]);
-    for (const [lab, r] of proj) {{
-      const x = c + L*r[0], y = c - L*r[1];
-      const len2d = Math.hypot(x - c, y - c);
-      ctx.strokeStyle = "{TEXT}"; ctx.fillStyle = "{TEXT}";
-      ctx.lineWidth = 2; ctx.lineCap = "round";
-      ctx.globalAlpha = 0.5 * (0.45 + 0.55 * (r[2] + 1) / 2);
-      if (len2d < 4) {{ ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }}
-      else {{
-        const ux = (x - c) / len2d, uy = (y - c) / len2d;
-        ctx.beginPath(); ctx.moveTo(c, c); ctx.lineTo(x, y); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + AH*ux, y + AH*uy);
-        ctx.lineTo(x - AH*uy*0.6, y + AH*ux*0.6);
-        ctx.lineTo(x + AH*uy*0.6, y - AH*ux*0.6);
-        ctx.closePath(); ctx.fill();
-      }}
-      ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText(lab, c + (L+13)*r[0], c - (L+13)*r[1] + 3);
-    }}
-    ctx.globalAlpha = 1;
-  }}
-  // free ions are not covalently bonded: drop inferred bonds involving
-  // alkali/alkaline-earth atoms, and halide bonds to anything but carbon
-  const CATIONS = new Set(["Li","Na","K","Rb","Cs","Mg","Ca","Sr","Ba"]);
-  const HALIDES = new Set(["F","Cl","Br","I"]);
-  function stripIonBonds(model) {{
-    const atoms = model.selectedAtoms({{}});
-    const drop = (a, b) => CATIONS.has(a.elem) || CATIONS.has(b.elem) ||
-      (HALIDES.has(a.elem) && b.elem !== "C") ||
-      (HALIDES.has(b.elem) && a.elem !== "C");
-    for (const a of atoms) {{
-      const bonds = [], orders = [];
-      a.bonds.forEach((bi, k) => {{
-        if (!drop(a, atoms[bi])) {{ bonds.push(bi); orders.push(a.bondOrder[k]); }}
-      }});
-      a.bonds = bonds; a.bondOrder = orders;
-    }}
-  }}
   function makeViewer(id, d) {{
     const v = $3Dmol.createViewer(id, {{backgroundColor: "{BG}", orthographic: true}});
     v.addModel(d.solid, "xyz");
@@ -561,12 +502,6 @@ def main() -> None:
     for (const e of d.edges) v.addLine({{start: {{x: e[0][0], y: e[0][1], z: e[0][2]}},
       end: {{x: e[1][0], y: e[1][1], z: e[1][2]}}, color: "{CELLC}"}});
     v.zoomTo(); v.zoom(1.1); v.render();
-    const canvas = document.getElementById("g" + id.slice(1));
-    if (canvas) {{
-      const update = view => drawGizmo(canvas, view.slice(4, 8), d.axes || AXES);
-      v.setViewChangeCallback(update);
-      update(v.getView());
-    }}
   }}
   const PENDING = Object.keys(DATA).map((k, i) => ["v" + i, k]);
   const obs = new IntersectionObserver(es => {{
