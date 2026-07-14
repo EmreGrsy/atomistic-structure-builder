@@ -106,6 +106,11 @@ def _sanitize_relation(rel, cs: list, keys: list) -> dict | None:
         host_c["builder"] = "surface_slab"
         mat = host_c["spec"].get("material") or host_c["spec"].get("element")
         host_c["spec"] = {"element": mat}
+    # "a dimer of two NPs" / "bcc superlattice of 2 NPs": the LLM invents a
+    # between-relation among the particles — arrangement is the cluster's job
+    if rel["kind"] == "between" and host_c \
+            and host_c["builder"] == "nanoparticle":
+        return None
     # a count the LLM parked on a MOLECULE constituent is invisible (not a
     # registry param there) — it belongs to the relation
     if guest_c and guest_c["builder"] == "molecule":

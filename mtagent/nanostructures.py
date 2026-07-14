@@ -27,6 +27,14 @@ def build_nanotube(n: int = 6, m: int = 6, length: int = 10,
 
 # --- generic spherical carve -------------------------------------------------
 
+def _no_empty(atoms: Atoms, what: str, size: float) -> Atoms:
+    if len(atoms) == 0:
+        raise ValueError(f"{what} of {size:g} Å came out EMPTY — the size is "
+                         "smaller than one unit cell. Sizes are in Ångström "
+                         "(1 nm = 10 Å); use a larger value.")
+    return atoms
+
+
 def carve_sphere(cell: Atoms, diameter: float) -> Atoms:
     """Carve a sphere of the given diameter (A) from any (periodic) crystal cell."""
     a = float(cell.cell.lengths().max())
@@ -40,7 +48,7 @@ def carve_sphere(cell: Atoms, diameter: float) -> Atoms:
     sphere.info["provenance"] = {"source": "ASE", "type": "spherical_nanoparticle",
                                  "diameter": diameter, "n_atoms": len(sphere),
                                  "composition": {e: symbols.count(e) for e in set(symbols)}}
-    return sphere
+    return _no_empty(sphere, "spherical carve", diameter)
 
 
 def build_magnetite_sphere(diameter: float = 40.0) -> Atoms:
@@ -83,6 +91,9 @@ def carve_cube(cell: Atoms, side: float) -> Atoms:
 def build_metal_cube(element: str = "Au", side: float = 40.0,
                      crystal: str = "fcc", a: float | None = None) -> Atoms:
     """A cubic metal nanoparticle (carved from bulk, {100} faces)."""
+    if a is None:                          # ASE demands `a` with an explicit
+        from .nanoparticle import _LATTICE, _fcc_a_from_ase  # crystalstructure
+        a = _LATTICE.get(element) or _fcc_a_from_ase(element)
     b = bulk(element, crystal, a=a, cubic=True) if a else bulk(element, crystal, cubic=True)
     return carve_cube(b, side)
 
@@ -173,7 +184,12 @@ def _element_bulk_cell(element: str, crystal: str | None = None,
                        a: float | None = None) -> Atoms:
     """Elemental bulk cell, CONVENTIONAL where one exists (Miller indices and
     crystallographic directions are read in the given cell's basis — ASE's
-    primitive fcc/bcc cell would silently redefine them)."""
+    primitive fcc/bcc cell would silently redefine them). Accepts element
+    names ('platinum') as well as symbols."""
+    from ase.data import atomic_numbers
+    if element not in atomic_numbers:      # LLM snippets pass names ('platinum')
+        from .registry import _element_symbol
+        element = _element_symbol(element) or element
     try:
         return bulk(element, crystal, a=a, cubic=True) if crystal \
             else bulk(element, cubic=True)
@@ -354,10 +370,23 @@ COMPOUND_CRYSTALS: dict = {
 }
 
 
+def _compound_key(name: str) -> str:
+    """Resolve any alias/formula ('GaAs', 'MgO', 'magnesia') to the table key."""
+    n = str(name).strip().lower()
+    if n in COMPOUND_CRYSTALS:
+        return n
+    from .registry import GENERIC_COMPOUNDS
+    for aliases, key in GENERIC_COMPOUNDS:
+        if n in aliases or any(a in n for a in aliases):
+            return key
+    raise KeyError(f"unknown compound {name!r} — known: "
+                   f"{sorted(COMPOUND_CRYSTALS)}")
+
+
 def build_compound(name: str) -> Atoms:
     """Conventional cell of a named compound from COMPOUND_CRYSTALS."""
     from ase.spacegroup import crystal
-    d = COMPOUND_CRYSTALS[name]
+    d = COMPOUND_CRYSTALS[_compound_key(name)]
     kw = {"setting": d["setting"]} if "setting" in d else {}
     return crystal(d["symbols"], basis=d["basis"], spacegroup=d["sg"],
                    cellpar=d["cellpar"], **kw)
@@ -368,9 +397,10 @@ def build_compound_slab(name: str, miller=(0, 0, 1), thickness: float = 10.0,
                         layers: int | None = None,
                         nx: int | None = None, ny: int | None = None) -> Atoms:
     """Surface slab of a named compound (plain truncation, no reconstruction)."""
-    slab = _slab_from_cell(build_compound(name), miller, thickness, width,
+    key = _compound_key(name)
+    slab = _slab_from_cell(build_compound(key), miller, thickness, width,
                            vacuum, layers, nx, ny)
-    slab.info["provenance"]["material"] = COMPOUND_CRYSTALS[name]["label"]
+    slab.info["provenance"]["material"] = COMPOUND_CRYSTALS[key]["label"]
     return slab
 
 

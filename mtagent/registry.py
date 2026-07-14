@@ -251,6 +251,10 @@ def _t_bulk(spec: dict) -> str:
     rep = (rep + rep[-1:] * 2)[:3] if rep else ["2", "2", "2"]
     rep_t = "(" + ", ".join(rep) + ")"
     ml = material.lower()
+    for names, kind in SHEETS:              # "a graphene sheet" parses as bulk
+        if any(t in ml for t in names):
+            return ("from mtagent.nanostructures import build_sheet\n"
+                    f'atoms = build_sheet("{kind}", width=25, vacuum=10)')
     for names, key in GENERIC_COMPOUNDS:
         if any(t in ml for t in names):
             return ("from mtagent.nanostructures import build_compound\n"

@@ -58,7 +58,8 @@ def build_fcc_sphere(element: str = "Au", diameter: float = 20.0,
         "lattice_a": a,
         "n_atoms": len(sphere),
     }
-    return sphere
+    from .nanostructures import _no_empty
+    return _no_empty(sphere, "spherical carve", diameter)
 
 
 def core_radius(atoms: Atoms) -> float:

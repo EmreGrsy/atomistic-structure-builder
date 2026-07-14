@@ -37,6 +37,21 @@ def unit_diameter(unit: Atoms) -> float:
     return float((p.max(axis=0) - p.min(axis=0)).max())
 
 
+def _lattice_basis(lattice: str, spacing: float) -> tuple[list, float]:
+    """(fractional basis, conventional cell edge) for a superlattice type.
+    `spacing` is the nearest-neighbor CENTER distance."""
+    lat = (lattice or "sc").lower()
+    if lat in ("sc", "simple cubic", "cubic"):
+        return [(0, 0, 0)], spacing
+    if lat == "fcc":
+        return ([(0, 0, 0), (0.5, 0.5, 0), (0.5, 0, 0.5), (0, 0.5, 0.5)],
+                spacing * math.sqrt(2.0))        # fcc nn distance = a/sqrt(2)
+    if lat == "bcc":
+        return ([(0, 0, 0), (0.5, 0.5, 0.5)],
+                spacing * 2.0 / math.sqrt(3.0))  # bcc nn distance = a*sqrt(3)/2
+    raise ValueError(f"unknown superlattice {lattice!r} — sc, fcc or bcc")
+
+
 def lattice_positions(n: int, spacing: float, lattice: str = "sc") -> np.ndarray:
     """N deterministic superlattice sites, most-compact first.
 
@@ -47,17 +62,7 @@ def lattice_positions(n: int, spacing: float, lattice: str = "sc") -> np.ndarray
     reproducible arrangement — e.g. sc n=8 is exactly a 2x2x2 cube, fcc n=4
     one conventional cell. The selected sites are re-centered on the origin.
     """
-    lat = (lattice or "sc").lower()
-    if lat in ("sc", "simple cubic", "cubic"):
-        basis, a = [(0, 0, 0)], spacing
-    elif lat == "fcc":
-        basis = [(0, 0, 0), (0.5, 0.5, 0), (0.5, 0, 0.5), (0, 0.5, 0.5)]
-        a = spacing * math.sqrt(2.0)             # fcc nn distance = a/sqrt(2)
-    elif lat == "bcc":
-        basis = [(0, 0, 0), (0.5, 0.5, 0.5)]
-        a = spacing * 2.0 / math.sqrt(3.0)       # bcc nn distance = a*sqrt(3)/2
-    else:
-        raise ValueError(f"unknown superlattice {lattice!r} — sc, fcc or bcc")
+    basis, a = _lattice_basis(lattice, spacing)
     dim = math.ceil((n / len(basis)) ** (1.0 / 3.0)) + 1
     pts = np.array([(np.array(b) + (i, j, k)) for i in range(dim)
                     for j in range(dim) for k in range(dim) for b in basis],
@@ -105,12 +110,25 @@ def build_cluster(unit: Atoms, n: int, gap: float = 10.0, name: str = "NP",
 
     dia = unit_diameter(unit)
     spacing = dia + gap
-    sites = lattice_positions(n, spacing, lattice)
+    basis, a_lat = _lattice_basis(lattice, spacing)
+    k = round((n / len(basis)) ** (1.0 / 3.0))
+    periodic = k >= 1 and len(basis) * k ** 3 == n
+    if periodic:
+        # n fills complete conventional cells -> a TRUE periodic supercrystal:
+        # cell edge = k*a, so the structure tiles seamlessly under PBC (the
+        # boundary-image neighbor distance equals the in-crystal spacing)
+        sites = np.array([(np.array(b) + (i, j, m)) * a_lat
+                          for i in range(k) for j in range(k) for m in range(k)
+                          for b in basis])
+        cell_len = k * a_lat
+        box = np.column_stack([np.zeros(3), np.full(3, cell_len)])
+    else:
+        sites = lattice_positions(n, spacing, lattice)
+        lo = sites.min(axis=0) - dia / 2.0 - margin
+        hi = sites.max(axis=0) + dia / 2.0 + margin
+        box = np.column_stack([lo, hi])
 
     centered = unit.get_positions() - unit.get_positions().mean(axis=0)
-    lo = sites.min(axis=0) - dia / 2.0 - margin
-    hi = sites.max(axis=0) + dia / 2.0 + margin
-    box = np.column_stack([lo, hi])
 
     unit_file = work / f"{name.lower()}.lt"
     system_file = work / "system.lt"
@@ -128,9 +146,13 @@ def build_cluster(unit: Atoms, n: int, gap: float = 10.0, name: str = "NP",
     elements, positions = parse_lammps_data(data_file)
 
     cluster = Atoms(elements, positions=positions)
+    if periodic:
+        cluster.set_cell(np.eye(3) * cell_len)
+        cluster.set_pbc(True)
     cluster.info["cluster"] = {"n_units": n, "unit_atoms": len(unit),
                                "unit_diameter": round(dia, 2), "gap": gap,
                                "spacing": round(spacing, 2), "lattice": lattice,
+                               "periodic": periodic,
                                "extent": round(cluster_extent(dia, n, gap), 2)}
     cluster.info["provenance"] = {"source": "moltemplate", "type": "np_cluster",
                                   "n_units": n, "spacing": round(spacing, 2),

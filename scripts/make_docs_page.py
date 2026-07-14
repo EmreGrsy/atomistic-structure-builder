@@ -60,8 +60,8 @@ def build_showcases() -> list[dict]:
     ethanol = get_molecule("ethanol")
     cases = []
 
-    np_ = build_magnetite_wulff(diameter=22.0)
-    solv = solvate(np_, build_solvent_box(water, box_size=34.0))
+    np_ = build_magnetite_wulff(diameter=26.0)
+    solv = solvate(np_, build_solvent_box(water, box_size=40.0))
     n_np = solv.info["solvation"]["solute_atoms"]
     cases.append(dict(
         title="Solvated nanoparticle",
@@ -70,17 +70,17 @@ def build_showcases() -> list[dict]:
                 "carve-and-insert solvation; the solvent renders translucent.",
         solid=solv[:n_np], trans=solv[n_np:], cellsrc=solv))
 
-    cnt = build_nanotube(10, 10, length=8)
-    filled = assemble.fill_inside(cnt, ethanol, n=8)
+    cnt = build_nanotube(10, 10, length=12)
+    filled = assemble.fill_inside(cnt, ethanol, n=12)
     cases.append(dict(
         title="Confined liquid",
-        prompt="8 ethanol molecules inside a (10,10) carbon nanotube",
+        prompt="12 ethanol molecules inside a (10,10) carbon nanotube",
         caption="packmol cylinder fill; the enclosing tube wall renders "
                 "translucent so the guest phase stays visible.",
         solid=filled[len(cnt):], trans=filled[:len(cnt)], cellsrc=filled))
 
-    tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=18.0, vacuum=14.0)
-    coated = assemble.coat(tio2, water, n=40)
+    tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=25.0, vacuum=14.0)
+    coated = assemble.coat(tio2, water, n=80)
     cases.append(dict(
         title="Solid–liquid interface",
         prompt="water on a rutile TiO2 (110) surface",
@@ -88,17 +88,17 @@ def build_showcases() -> list[dict]:
                 "periodic cell; interfaces render fully solid.",
         solid=coated, trans=None, cellsrc=coated))
 
-    sheet = build_sheet("graphene", width=17, vacuum=10)
-    gsand = assemble.sandwich(sheet, water, n=40)
+    sheet = build_sheet("graphene", width=24, vacuum=10)
+    gsand = assemble.sandwich(sheet, water, n=80)
     cases.append(dict(
         title="2D confinement",
-        prompt="40 water molecules between two graphene sheets",
+        prompt="80 water molecules between two graphene sheets",
         caption="A water film packed between the sheets with symmetric "
                 "wall clearances; one periodic cell.",
         solid=gsand, trans=None, cellsrc=gsand))
 
-    np20 = build_magnetite_wulff(diameter=20.0)
-    sc = build_cluster(np20, n=4, gap=8.0, lattice="fcc")
+    np20 = build_magnetite_wulff(diameter=24.0)
+    sc = build_cluster(np20, n=4, gap=10.0, lattice="fcc")
     cases.append(dict(
         title="Nanoparticle supercrystal",
         prompt="an FCC supercrystal of 4 magnetite nanoparticles",
@@ -106,8 +106,8 @@ def build_showcases() -> list[dict]:
                 "on fcc superlattice sites (KG-validated .lt).",
         solid=sc, trans=None, cellsrc=sc))
 
-    mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=1)
-    rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=3)
+    mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
+    rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=9)
     hs = assemble.sandwich(mag, water, top=rut)
     cases.append(dict(
         title="Hetero-interface sandwich",
@@ -213,7 +213,7 @@ def main() -> None:
   .prompt {{ font-size:12.5px; margin-top:3px; font-family:ui-monospace,monospace;
              background:{BG}; border:1px solid {CELLC}55; border-radius:6px;
              padding:4px 8px; display:inline-block; }}
-  .viewer {{ width:100%; height:330px; position:relative; }}
+  .viewer {{ width:100%; height:380px; position:relative; }}
   .caption {{ padding:8px 14px 12px; font-size:12.5px; opacity:.8; }}
   .n {{ opacity:.7; }}
   code {{ background:#f5f0e8; padding:1px 5px; border-radius:4px; }}
@@ -264,7 +264,7 @@ def main() -> None:
   4-index hexagonal notation, N&times;M supercells, and hetero-interfaces
   with automatic lattice matching.</p>
 
-  <h2>Showcases</h2>
+  <h2>Examples</h2>
   <p class="doc">Each example below is a real build produced by the prompt
   shown, rendered live — drag to rotate, scroll to zoom. Enclosing phases
   (solvent shells, tube walls) render at 50% opacity; interfaces stay solid.
