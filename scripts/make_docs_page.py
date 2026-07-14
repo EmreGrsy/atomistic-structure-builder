@@ -77,6 +77,33 @@ def _fill_around(cluster, molecule, n: int, margin: float = -1.0,
     return read(str(outx))[len(cluster):]
 
 
+def _cached_case(key: str, params: dict, build):
+    """(solid, trans) from the example cache, else build once and cache.
+
+    The cache key is the parameter dict, so changing any knob rebuilds only
+    that example; bump "v" to bust the cache after a logic change."""
+    import hashlib
+    from ase.io import read, write
+    sig = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:12]
+    cdir = ROOT / "data" / "cache" / "docs_examples"
+    s_f = cdir / f"{key}-{sig}.solid.xyz"
+    t_f = cdir / f"{key}-{sig}.trans.xyz"
+    if s_f.exists():
+        print(f"  [cache] {key}")
+        return read(s_f), (read(t_f) if t_f.exists() else None)
+    print(f"  [build] {key}")
+    solid, trans = build()
+    cdir.mkdir(parents=True, exist_ok=True)
+    a = solid.copy()
+    a.info.clear()
+    write(s_f, a)
+    if trans is not None:
+        b = trans.copy()
+        b.info.clear()
+        write(t_f, b)
+    return solid, trans
+
+
 def build_showcases() -> list[dict]:
     from mtagent import assemble
     from mtagent.cluster import build_cluster
@@ -87,80 +114,113 @@ def build_showcases() -> list[dict]:
     from mtagent.wulff import build_magnetite_wulff
 
     water = get_molecule("water")
-    ethanol = get_molecule("ethanol")
     cases = []
 
     # equal facet energies -> all facet planes equidistant: the most
     # sphere-like Wulff habit these families can produce
     round_gamma = {(1, 1, 1): 1.0, (1, 0, 0): 1.0, (1, 1, 0): 1.0}
-    np_ = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
-    solv = solvate(np_, build_solvent_box(water, box_size=40.0))
-    n_np = solv.info["solvation"]["solute_atoms"]
+
+    def _np_water():
+        np_ = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
+        solv = solvate(np_, build_solvent_box(water, box_size=40.0))
+        n_np = solv.info["solvation"]["solute_atoms"]
+        return solv[:n_np], solv[n_np:]
+
+    solid, trans = _cached_case(
+        "np_water", {"d": 26.0, "box": 40.0, "gamma": "1/1/1", "v": 1}, _np_water)
     cases.append(dict(
         title="Solvated nanoparticle",
         prompt="a 2.6 nm magnetite nanoparticle in water",
         caption="Wulff-constructed Fe3O4 particle (balanced facet energies, "
                 "near-spherical habit), carve-and-insert solvation; the "
                 "solvent renders translucent.",
-        solid=solv[:n_np], trans=solv[n_np:], cellsrc=solv))
+        solid=solid, trans=trans, cellsrc=trans))
 
-    from ase import Atoms as _Atoms
-    cnt = build_nanotube(10, 10, length=12)
-    filled = assemble.fill_inside(cnt, water, n=14)
-    filled.info["provenance"] = {"type": "nanotube"}   # keep the cylinder
-    filled = assemble.fill_inside(filled, _Atoms("Na"), n=2)  # constraint for
-    filled.info["provenance"] = {"type": "nanotube"}   # the ion fills
-    filled = assemble.fill_inside(filled, _Atoms("Cl"), n=2)
+    def _electrolyte():
+        from ase import Atoms as _Atoms
+        cnt = build_nanotube(10, 10, length=18)
+        filled = assemble.fill_inside(cnt, water, n=22)
+        filled.info["provenance"] = {"type": "nanotube"}   # keep the cylinder
+        filled = assemble.fill_inside(filled, _Atoms("K"), n=3)   # constraint
+        filled.info["provenance"] = {"type": "nanotube"}   # for the ion fills
+        filled = assemble.fill_inside(filled, _Atoms("Cl"), n=3)
+        return filled[len(cnt):], filled[:len(cnt)]        # wall translucent
+
+    solid, trans = _cached_case(
+        "electrolyte_cnt", {"nm": "10x10x18", "waters": 22, "kcl": 3, "v": 1},
+        _electrolyte)
+    n_k = solid.get_chemical_symbols().count("K")
+    n_cl_ions = solid.get_chemical_symbols().count("Cl")
+    print(f"  electrolyte check: {n_k} K, {n_cl_ions} Cl ions present")
     cases.append(dict(
         title="Confined electrolyte",
-        prompt="water with 2 Na and 2 Cl ions inside a (10,10) carbon nanotube",
+        prompt="water with 3 KCl ion pairs inside a (10,10) carbon nanotube",
         caption="Packmol cylinder fills, ions packed into the water; the "
                 "enclosing tube wall renders translucent so the confined "
                 "phase stays visible.",
-        solid=filled[len(cnt):], trans=filled[:len(cnt)], cellsrc=filled))
+        solid=solid, trans=trans, cellsrc=trans))
 
     oleic = get_molecule("oleic acid")
-    tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=25.0, vacuum=20.0)
-    coated = assemble.coat(tio2, oleic, n=14)
+
+    def _interface():
+        tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=25.0, vacuum=20.0)
+        return assemble.coat(tio2, oleic, n=14), None
+
+    solid, trans = _cached_case(
+        "oleic_rutile", {"w": 25.0, "vac": 20.0, "n": 14, "v": 1}, _interface)
     cases.append(dict(
         title="Solid–liquid interface",
         prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
         caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
-        solid=coated, trans=None, cellsrc=coated))
+        solid=solid, trans=trans, cellsrc=solid))
 
-    sheet = build_sheet("graphene", width=24, vacuum=10)
-    gsand = assemble.sandwich(sheet, water, n=80)
+    def _graphene():
+        sheet = build_sheet("graphene", width=24, vacuum=10)
+        return assemble.sandwich(sheet, water, n=80), None
+
+    solid, trans = _cached_case(
+        "graphene_water", {"w": 24, "n": 80, "v": 1}, _graphene)
     cases.append(dict(
         title="2D confinement",
         prompt="80 water molecules between two graphene sheets",
         caption="A water film packed between the sheets with symmetric "
                 "wall clearances; one periodic cell.",
-        solid=gsand, trans=None, cellsrc=gsand))
+        solid=solid, trans=trans, cellsrc=solid))
 
-    np26 = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
     seq = "ABCABCABAB"
-    sc = build_cluster(np26, n=len(seq), gap=6.0, lattice=seq)
-    oleic_fill = _fill_around(sc, oleic, n=500, margin=4.0)
+
+    def _supercrystal():
+        np26 = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
+        sc = build_cluster(np26, n=len(seq), gap=6.0, lattice=seq)
+        return sc, _fill_around(sc, oleic, n=500, margin=4.0)
+
+    solid, trans = _cached_case(
+        "faulted_supercrystal",
+        {"d": 26.0, "seq": seq, "gap": 6.0, "oleic": 500, "v": 1}, _supercrystal)
     cases.append(dict(
         title="Faulted nanoparticle supercrystal",
         prompt=f"a {seq}-stacked supercrystal of 2.6 nm magnetite "
                "nanoparticles, filled with oleic acid",
-        caption="Close-packed layers with an explicit stacking sequence — an "
+        caption="Close-packed layers with an explicit stacking sequence, an "
                 "fcc supercrystal carrying a stacking fault; Moltemplate "
                 "instantiates the particle per site, oleic acid fills the "
                 "interstitial space (translucent).",
-        solid=sc, trans=oleic_fill, cellsrc=sc))
+        solid=solid, trans=trans, cellsrc=solid))
 
-    mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
-    rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=9)
-    hs = assemble.sandwich(mag, water, top=rut, clearance=3.5)
+    def _hetero():
+        mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
+        rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=9)
+        return assemble.sandwich(mag, water, top=rut, clearance=3.5, n=100), None
+
+    solid, trans = _cached_case(
+        "hetero_sandwich", {"clr": 3.5, "n": 100, "v": 1}, _hetero)
     cases.append(dict(
         title="Hetero-interface sandwich",
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
         caption="Supercells are lattice-matched automatically; the top slab "
                 "is strained epitaxially (recorded, 12% cap).",
-        solid=hs, trans=None, cellsrc=hs))
+        solid=solid, trans=trans, cellsrc=solid))
     return cases
 
 
@@ -209,7 +269,7 @@ def som_section() -> str:
     s = json.loads(path.read_text())
     coords = s["coords"]
     um = _hex_svg(coords, s["umatrix"], [""] * len(coords),
-                  ("#e3ecf7", "#1d3f66"),
+                  ("#e4efe7", "#1e4531"),
                   "U-matrix (mean neighbor distance)")
     hits = [c["hits"] for c in s["cells"]]
     hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
@@ -246,8 +306,8 @@ def metrics_section() -> str:
         return ""
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
-    # single-hue horizontal bars: magnitude only (validated palette, blue-700)
-    bar, track, ink = "#2c5aa0", "rgba(90,76,64,.12)", TEXT
+    # single-hue horizontal bars: magnitude only (dark green, 6.2:1 on surface)
+    bar, track, ink = "#2d5f42", "rgba(90,76,64,.12)", TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
@@ -386,7 +446,7 @@ def main() -> None:
 
   <h2>Examples</h2>
   <p class="doc">Each example below is a real build produced by the prompt
-  shown, rendered live — drag to rotate, scroll to zoom. Enclosing phases
+  shown, rendered live, drag to rotate and scroll to zoom. Enclosing phases
   (solvent shells, tube walls) render at 50% opacity; interfaces stay solid.
   Sphere radii are proportional to van der Waals radii.</p>
   <div class="grid">{''.join(cards)}</div>
@@ -413,7 +473,7 @@ def main() -> None:
       const len2d = Math.hypot(x - c, y - c);
       ctx.strokeStyle = "{TEXT}"; ctx.fillStyle = "{TEXT}";
       ctx.lineWidth = 2; ctx.lineCap = "round";
-      ctx.globalAlpha = 0.45 + 0.55 * (r[2] + 1) / 2;
+      ctx.globalAlpha = 0.5 * (0.45 + 0.55 * (r[2] + 1) / 2);
       if (len2d < 4) {{ ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }}
       else {{
         const ux = (x - c) / len2d, uy = (y - c) / len2d;
