@@ -21,10 +21,11 @@ from pathlib import Path
 from string import Template
 
 THEMES = {
+    "light_gray": dict(bg="#e9eaec", text="#3d4148", cell="#8f939b", outline=0.10),
     "warm_gray":  dict(bg="#efe9e1", text="#5a4c40", cell="#a3927f", outline=0.10),
     "dark_slate": dict(bg="#20242c", text="#dfe3ea", cell="#58637a", outline=0.08),
 }
-THEME = THEMES["warm_gray"]
+THEME = THEMES["light_gray"]
 
 STICK_RADIUS = 0.12
 VDW_FACTOR = 0.44            # toon ball-and-stick: spheres at 44% of the vdW radius

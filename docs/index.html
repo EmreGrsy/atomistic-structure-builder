@@ -221,7 +221,7 @@
     }
   }
   function makeViewer(id, d) {
-    const v = $3Dmol.createViewer(id, {backgroundColor: "#efe9e1", orthographic: true});
+    const v = $3Dmol.createViewer(id, {backgroundColor: "#e9eaec", orthographic: true});
     v.addModel(d.solid, "xyz");
     if (d.trans) v.addModel(d.trans, "xyz");
     stripIonBonds(v.getModel(0));
@@ -236,7 +236,7 @@
           sphere: {radius: r, ...col, opacity: 0.5}});
     }
     for (const e of d.edges) v.addLine({start: {x: e[0][0], y: e[0][1], z: e[0][2]},
-      end: {x: e[1][0], y: e[1][1], z: e[1][2]}, color: "#a3927f"});
+      end: {x: e[1][0], y: e[1][1], z: e[1][2]}, color: "#8f939b"});
     v.zoomTo(); v.zoom(1.1); v.render();
   }
   const PENDING = Object.keys(DATA).map((k, i) => ["v" + i, k]);
