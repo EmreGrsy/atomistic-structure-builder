@@ -133,8 +133,8 @@ def build_showcases() -> list[dict]:
     cases.append(dict(
         title="Solvated nanoparticle",
         prompt="a 2.6 nm magnetite nanoparticle in water",
-        caption="Wulff-constructed Fe3O4 particle (balanced facet energies, "
-                "near-spherical habit), carve-and-insert solvation; the "
+        caption="Wulff constructed Fe3O4 particle (balanced facet energies, "
+                "near spherical habit), carve and insert solvation; the "
                 "solvent renders translucent.",
         solid=solid, trans=trans, cellsrc=trans))
 
@@ -172,7 +172,7 @@ def build_showcases() -> list[dict]:
     solid, trans = _cached_case(
         "oleic_rutile", {"w": 25.0, "vac": 20.0, "n": 14, "v": 1}, _interface)
     cases.append(dict(
-        title="Solid-liquid interface",
+        title="Solid liquid interface",
         prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
         caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
@@ -203,9 +203,9 @@ def build_showcases() -> list[dict]:
         {"d": 26.0, "seq": seq, "gap": 6.0, "oleic": 500, "v": 1}, _supercrystal)
     cases.append(dict(
         title="Faulted nanoparticle supercrystal",
-        prompt=f"a {seq}-stacked supercrystal of 2.6 nm magnetite "
+        prompt=f"a {seq} stacked supercrystal of 2.6 nm magnetite "
                "nanoparticles, filled with oleic acid",
-        caption="Close-packed layers with an explicit stacking sequence, an "
+        caption="Close packed layers with an explicit stacking sequence, an "
                 "fcc supercrystal carrying a stacking fault; Moltemplate "
                 "instantiates the particle per site, oleic acid fills the "
                 "interstitial space (translucent).",
@@ -219,9 +219,9 @@ def build_showcases() -> list[dict]:
     solid, trans = _cached_case(
         "hetero_sandwich", {"clr": 3.5, "n": 100, "v": 1}, _hetero)
     cases.append(dict(
-        title="Hetero-interface sandwich",
+        title="Hetero interface sandwich",
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
-        caption="Supercells are lattice-matched automatically; the top slab "
+        caption="Supercells are lattice matched automatically; the top slab "
                 "is strained epitaxially (recorded, 12% cap).",
         solid=solid, trans=trans, cellsrc=solid))
     return cases
@@ -273,28 +273,28 @@ def som_section() -> str:
     coords = s["coords"]
     um = _hex_svg(coords, s["umatrix"], [""] * len(coords),
                   ("#e4efe7", "#1e4531"),
-                  "U-matrix (mean neighbor distance)")
+                  "U matrix (mean neighbor distance)")
     hits = [c["hits"] for c in s["cells"]]
     hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
                   ("#f7ece1", "#8a4a24"), "BMU hit map (prompts per neuron)")
     return f"""
-  <h3>Prompt-space analysis (SOM)</h3>
+  <h3>Prompt space analysis (SOM)</h3>
   <p class="doc">To understand the diversity of the prompt set, the 100
-  prompts were converted into 3072-dimensional embedding vectors with OpenAI's
+  prompts were converted into 3072 dimensional embedding vectors with OpenAI's
   <code>text-embedding-3-large</code> model and a 10&times;10 hexagonally
-  packed self-organizing map (SOM;
+  packed self organizing map (SOM;
   <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
   <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) was trained on
   them, following the methodology of GENIUS
   (<a href="https://arxiv.org/abs/2512.06404">arXiv:2512.06404</a>). The SOM
-  is an unsupervised neural network that projects high-dimensional data onto
-  a two-dimensional grid while preserving the topology of the input space;
-  training used 50,000 mini-batch iterations with a Gaussian neighborhood
+  is an unsupervised neural network that projects high dimensional data onto
+  a two dimensional grid while preserving the topology of the input space;
+  training used 50,000 mini batch iterations with a Gaussian neighborhood
   and a linearly decreasing learning rate. Quantization Error is
   <b>{s['qe']}</b>, good representational fidelity given that the
-  unit-normalized inputs have a maximum possible pairwise distance of 2.0;
+  unit normalized inputs have a maximum possible pairwise distance of 2.0;
   Topological Error is <b>{s['te']}</b>, confirming the neighborhood
-  structure is preserved. In the U-matrix, high values mark cluster
+  structure is preserved. In the U matrix, high values mark cluster
   boundaries and low values dense groups of similar prompts; the hit map
   counts BMU activations per neuron, and empty neurons act as boundary
   regions between clusters.</p>
@@ -316,7 +316,7 @@ def metrics_section() -> str:
         return ""
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
-    # single-hue horizontal bars sampled from the U-matrix ramp (4.0:1)
+    # single-hue horizontal bars sampled from the U matrix ramp (4.0:1)
     bar, track, ink = "#597868", "rgba(90,76,64,.12)", TEXT
     rows = []
     for name, d in cats:
@@ -331,7 +331,7 @@ def metrics_section() -> str:
     if comp_path.exists():
         cp = json.loads(comp_path.read_text())["percent"]
         comp_txt = (
-            f" A score-based metric evaluation shows that the prompts comprise "
+            f" A score based metric evaluation shows that the prompts comprise "
             f"{cp['basic']}% basic, {cp['standard']}% standard, and "
             f"{cp['complex']}% complex requests. This evaluation is performed "
             "with OpenAI's <code>gpt-4o-mini</code> model, which assigns a "
@@ -341,7 +341,7 @@ def metrics_section() -> str:
   <h2>Benchmark</h2>
   <p class="doc">To probe the framework's coverage and robustness, a set of
   {s['n']} test prompts spanning ten task categories (metal and oxide
-  nanoparticles, solvation, elemental and compound surfaces, solid-liquid
+  nanoparticles, solvation, elemental and compound surfaces, solid liquid
   interfaces, confined films, nanoparticle supercrystals, filled nanotubes,
   and bulk builds) was executed through the complete pipeline: parsing,
   specification, static validation against the knowledge graphs, sandboxed
@@ -349,9 +349,9 @@ def metrics_section() -> str:
   successful only if every stage passes; a structurally plausible but
   invalid intermediate is treated as a failure of its stage.{comp_txt}
   Overall, <b>{total}</b> prompts complete the full pipeline successfully.
-  The two residual failures are a unit-interpretation slip by the language
+  The two residual failures are a unit interpretation slip by the language
   model (now surfaced as an explicit error rather than an empty structure)
-  and one non-converged stochastic packing run.</p>
+  and one stochastic packing run that did not converge.</p>
   <div class="bars" role="img" aria-label="success rate per category">
     {''.join(rows)}
   </div>
@@ -426,13 +426,13 @@ def main() -> None:
 <body>
 <main>
   <h1>{APP_NAME}</h1>
-  <p class="tagline">A knowledge-graph-grounded atomistic structure builder,
+  <p class="tagline">A knowledge graph grounded atomistic structure builder,
   the code you see is the code that runs. Geometry only.</p>
   <p class="version">v{APP_VERSION}</p>
 
   <h2>Overview</h2>
-  <p class="doc">Natural-language requests are converted into validated,
-  atom-resolved 3D structures: nanoparticles, surfaces, interfaces, confined
+  <p class="doc">Natural language requests are converted into validated,
+  atom resolved 3D structures: nanoparticles, surfaces, interfaces, confined
   liquids, and nanoparticle superlattices. The deliverable of every build is
   the geometry itself, an interactive view and an <code>.xyz</code> file
   carrying the full simulation cell. Structures are geometric: crystal
@@ -455,7 +455,7 @@ def main() -> None:
     <li><b>Clarify.</b> Only genuinely missing parameters are asked;
       everything else takes registry defaults.</li>
     <li><b>Propose.</b> A build snippet is written per constituent with the
-      retrieved evidence in-prompt. The snippet shown is the code executed.</li>
+      retrieved evidence included in the prompt. The snippet shown is the code executed.</li>
     <li><b>Validate &amp; build.</b> Three gates: static validation against
       the knowledge graphs, sandboxed execution, and geometric verification
       (finite coordinates, no unphysical contacts).</li>
@@ -470,8 +470,8 @@ def main() -> None:
   OpenAI's <code>gpt-4o-mini</code> parses language and drafts the build
   snippets. 3Dmol.js renders.
   Supported: any element (conventional cells), 16 compound crystals,
-  2D sheets (graphene, h-BN), any Miller termination including 4-index
-  hexagonal notation, N&times;M supercells, and hetero-interfaces with
+  2D sheets (graphene, hBN), any Miller termination including 4 index
+  hexagonal notation, N&times;M supercells, and hetero interfaces with
   automatic lattice matching.</p>
 
   <h2>Examples</h2>

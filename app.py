@@ -54,8 +54,8 @@ APP_NAME = "Atomistic Structure Builder"
 APP_VERSION = "0.1.0"
 
 st.title(APP_NAME)
-st.caption("A knowledge-graph-grounded atomistic structure builder")
-st.caption("KG-grounded structure builder — the code you see is the code that runs. "
+st.caption("A knowledge graph grounded atomistic structure builder")
+st.caption("KG grounded structure builder, the code you see is the code that runs. "
            "Geometry only (MD equilibration is a later pipeline stage).")
 
 SS = st.session_state
@@ -194,7 +194,7 @@ def suggestion_message(state: dict, final: dict, proposals: dict) -> str:
     raw = {c["key"]: (c.get("spec") or {}) for c in state["constituents"]}
     names = " and ".join(f"**{c['key']}**" for c in cs)
     n = len(cs)
-    out = [f"**{n} constituent{'s' if n > 1 else ''}**: {names} — "
+    out = [f"**{n} constituent{'s' if n > 1 else ''}**: {names}, "
            "here is the suggested build:"]
 
     for c in cs:
@@ -203,17 +203,17 @@ def suggestion_message(state: dict, final: dict, proposals: dict) -> str:
                 f"```python\n{p.code}\n```",
                 param_table(c["builder"], raw.get(c["key"], {}), c["spec"])]
         if not p.report.passed:
-            out += [f"Note — this snippet has validation issues: {p.report.summary()}"]
+            out += [f"Note, this snippet has validation issues: {p.report.summary()}"]
 
     rels = ground.relations_of(final)
     if rels and "showcase" in proposals:
         p = proposals["showcase"]
-        out += ["\n#### combined structure — " + rel_label(final),
+        out += ["\n#### combined structure: " + rel_label(final),
                 f"```python\n{p.code}\n```",
-                "*The combined cell is geometry only — a simulation-ready cell "
+                "*The combined cell is geometry only, a simulation ready cell "
                 "needs MD equilibration, which is outside this agent's scope.*"]
     elif n >= 2:
-        out += ["\n**How should these be combined?** — " +
+        out += ["\n**How should these be combined?** " +
                 ", ".join(f"`{k}`" for k in RELATIONS) +
                 f" (e.g. *\"{cs[1]['key']} inside {cs[0]['key']}\"*)."]
 
@@ -306,16 +306,16 @@ def build_all() -> None:
     with st.status("Building the structures…", expanded=True) as sb:
         for c in SS.final["constituents"]:
             key = c["key"]
-            sb.write(f"**{key}** — executing its validated snippet…")
+            sb.write(f"**{key}**: executing its validated snippet…")
             atoms = run_snippet(SS.proposals[key].code)               # Gate 2
             results[key] = (atoms, verify_atoms(atoms))               # Gate 3
-            sb.write(f"**{key}** — {len(atoms)} atoms built")
+            sb.write(f"**{key}**: {len(atoms)} atoms built")
         if rels and "showcase" in SS.proposals:
             sb.write(f"combining: {rel_label(SS.final)}…")
             inputs = {k: a for k, (a, _) in results.items()}
             atoms = run_snippet(SS.proposals["showcase"].code, inputs)
             results["showcase"] = (atoms, verify_atoms(atoms))
-            sb.write(f"combined structure — {len(atoms)} atoms built")
+            sb.write(f"combined structure: {len(atoms)} atoms built")
         sb.update(label="Build finished", state="complete", expanded=False)
     SS.results = results
     built = ", ".join(
@@ -333,44 +333,44 @@ def build_all() -> None:
 _EXAMPLES = (
     ("Solvated nanoparticle", "a 4 nm magnetite nanoparticle in water"),
     ("Confined liquid", "20 ethanol molecules inside a (10,10) carbon nanotube"),
-    ("Solid–liquid interface", "water on a rutile TiO2 (110) surface"),
+    ("Solid liquid interface", "water on a rutile TiO2 (110) surface"),
     ("2D confinement", "100 water molecules between two graphene sheets"),
     ("Nanoparticle supercrystal", "an FCC supercrystal of 4 magnetite nanoparticles"),
-    ("Hetero-sandwich", "water between a magnetite 001 slab and a rutile 110 slab"),
+    ("Hetero sandwich", "water between a magnetite 001 slab and a rutile 110 slab"),
 )
 
 with st.sidebar:
     st.markdown(f"**{APP_NAME}** · v{APP_VERSION}")
-    st.caption("KG-grounded structure builder, the code you see is the code "
+    st.caption("KG grounded structure builder, the code you see is the code "
                "that runs. Geometry only.")
 
     with st.expander("Documentation", expanded=False):
         st.markdown("""
-**Overview.** Natural-language requests are converted into validated,
-atom-resolved 3D structures. The output of every build is the geometry
+**Overview.** Natural language requests are converted into validated,
+atom resolved 3D structures. The output of every build is the geometry
 itself: an interactive viewer and an `.xyz` download carrying the full
 simulation cell.
 
 **Pipeline.**
-1. **Parse** — the request is decomposed into typed constituents
+1. **Parse.** the request is decomposed into typed constituents
    (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
    nanotube) and the relations between them (*inside, around, coated_by,
    on, between*).
-2. **Retrieve** — real function signatures and constraints are pulled
+2. **Retrieve.** real function signatures and constraints are pulled
    from two knowledge graphs. ASE: 2,392 nodes (one per function or
    class, with its real signature) and connectivity edges to their
    parent modules, introspected from the installed package.
    Moltemplate: 60 nodes (the .lt constructs) with 23 connectivity
    edges and 8 constraint rules, built once from the official manual.
    Generation never runs without this evidence.
-3. **Clarify** — only parameters that are genuinely missing are asked
+3. **Clarify.** only parameters that are genuinely missing are asked
    for; everything else takes registry defaults.
-4. **Propose** — a build snippet is written per constituent with the
+4. **Propose.** a build snippet is written per constituent with the
    retrieved evidence in-prompt. The snippet shown is the code executed.
-5. **Validate & build** — three gates: static validation against the
+5. **Validate & build.** Three gates: static validation against the
    knowledge graphs; sandboxed execution; geometric verification
    (finite coordinates, no unphysical contacts).
-6. **Assemble** — constituents are combined per the stated relations:
+6. **Assemble.** constituents are combined per the stated relations:
    packmol for liquids (solvation, films, fills), Moltemplate for
    repeated units (ligand shells, nanoparticle superlattices).
 
@@ -381,8 +381,8 @@ coordinates · OpenAI parses language · 3Dmol.js renders.
 **Materials.** Any element (conventional cells; fcc/bcc/hcp/diamond),
 16 compounds (magnetite, rutile & anatase TiO2, quartz, ZnO, GaAs, GaN,
 Al2O3, Fe2O3, MgO, NiO, CeO2, SrTiO3, NaCl, FeS2, MoS2) and 2D sheets
-(graphene, h-BN). Any Miller termination incl. 4-index hexagonal
-notation; NxM supercells; hetero-interfaces with automatic lattice
+(graphene, hBN). Any Miller termination incl. 4 index hexagonal
+notation; NxM supercells; hetero interfaces with automatic lattice
 matching (strain recorded, 12% cap).
 
 **Scope.** Structures are geometric: crystal truncations are not
@@ -396,19 +396,19 @@ reconstructed and assemblies are not equilibrated.
 
     with st.expander("Registry (single source of truth)"):
         for b in BUILDERS.values():
-            st.markdown(f"**{b.name}** — {b.description}")
+            st.markdown(f"**{b.name}**: {b.description}")
         st.markdown("**relations**: " + ", ".join(RELATIONS))
 
     st.divider()
     st.markdown(("OpenAI: parse + propose" if have_openai_key()
-                 else "no OpenAI key — keyword parse + canonical snippets"))
+                 else "no OpenAI key: keyword parse + canonical snippets"))
     if st.button("Start over"):
         for k in ("messages", "spec", "gap", "final", "proposals", "results", "prop_cache"):
             SS.pop(k, None)
         st.rerun()
 
 if not SS.messages:
-    st.info('Tell me what to build — e.g. *"a carbon nanotube with methanol inside"* or '
+    st.info('Tell me what to build, e.g. *"a carbon nanotube with methanol inside"* or '
             '*"a 4 nm magnetite nanoparticle in water"*. You immediately get the '
             "suggested build code for every constituent, with the parameters explained.")
 
@@ -463,12 +463,12 @@ def render_results(m: dict, idx: int) -> None:
     for key, (atoms, report) in results.items():
         is_showcase = key == "showcase"
         name = rel_label(final) if is_showcase else display_name(key, atoms)
-        title = f"{name} — {len(atoms)} atoms" + \
+        title = f"{name}, {len(atoms)} atoms" + \
             (" (geometry only, NOT equilibrated)" if is_showcase else "")
         with st.expander(title, expanded=is_showcase):
             st.code(proposals[key].code, language="python")
             if len(atoms) == 0:
-                st.warning("This build produced 0 atoms — the parameters carve "
+                st.warning("This build produced 0 atoms. The parameters carve "
                            "or filter everything away. Adjust them and rebuild.")
                 continue
             if atoms.info.get("packmol_inp"):
@@ -519,7 +519,7 @@ for i, m in enumerate(SS.messages):
 
 
 def parse_fresh(prompt: str, sb) -> None:
-    sb.write("understanding the request — LLM parses it into typed constituents…")
+    sb.write("understanding the request: LLM parses it into typed constituents…")
     state = clarify.parse_query(prompt)
     if not state["constituents"]:
         SS.messages.append({"role": "assistant", "content":
@@ -532,7 +532,7 @@ def parse_fresh(prompt: str, sb) -> None:
     sb.write("retrieving the real function signatures from the knowledge graphs, "
              "writing the build code, validating it…")
     refresh(state)
-    sb.write("done — suggestion posted below.")
+    sb.write("done, suggestion posted below.")
 
 
 prompt = st.chat_input("Describe the structure, adjust parameters, or say 'build'…")
@@ -551,17 +551,17 @@ if prompt:
             build_all()
         else:
             with st.status("Working on it…", expanded=True) as sb:
-                sb.write("deciding what you mean — question, parameter change, "
+                sb.write("deciding what you mean: question, parameter change, "
                          "new system, or build…")
                 gap = ground.Gap(**SS.gap) if SS.gap else None
                 r = clarify.respond(SS.spec, prompt, gap, qa_context())
                 if r["intent"] == "question":
                     sb.write("answering from the current spec, code and sources…")
                     SS.messages.append({"role": "assistant",
-                                        "content": r["answer"] or "I'm not sure — "
+                                        "content": r["answer"] or "I'm not sure, "
                                         "could you rephrase that?"})
                 elif r["intent"] == "new":
-                    sb.write("that's a different system — starting a fresh plan…")
+                    sb.write("that's a different system, starting a fresh plan…")
                     for k in ("spec", "gap", "final", "proposals", "results"):
                         SS[k] = None
                     parse_fresh(prompt, sb)
@@ -571,7 +571,7 @@ if prompt:
                     refresh(r["state"])
                 elif r["intent"] == "edit":
                     SS.messages.append({"role": "assistant", "content":
-                                        "That didn't change anything in the plan — the "
+                                        "That didn't change anything in the plan. The "
                                         "spec is as shown above. Ask me a question about "
                                         "it, adjust a parameter, or say **build**."})
                 sb.update(label="Done", state="complete", expanded=False)
