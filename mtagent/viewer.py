@@ -65,10 +65,29 @@ _TEMPLATE = Template("""<!DOCTYPE html>
     const AXES = $axes;
     const RADII = $radii;
 
+    // free ions are not covalently bonded: drop inferred bonds involving
+    // alkali/alkaline-earth atoms, and halide bonds to anything but carbon
+    const CATIONS = new Set(["Li","Na","K","Rb","Cs","Mg","Ca","Sr","Ba"]);
+    const HALIDES = new Set(["F","Cl","Br","I"]);
+    function stripIonBonds(model) {
+      const atoms = model.selectedAtoms({});
+      const drop = (a, b) => CATIONS.has(a.elem) || CATIONS.has(b.elem) ||
+        (HALIDES.has(a.elem) && b.elem !== "C") ||
+        (HALIDES.has(b.elem) && a.elem !== "C");
+      for (const a of atoms) {
+        const bonds = [], orders = [];
+        a.bonds.forEach((bi, k) => {
+          if (!drop(a, atoms[bi])) { bonds.push(bi); orders.push(a.bondOrder[k]); }
+        });
+        a.bonds = bonds; a.bondOrder = orders;
+      }
+    }
     const viewer = $$3Dmol.createViewer("viewer",
         { backgroundColor: "$bg", orthographic: true });
     viewer.addModel(XYZ_SOLID, "xyz");
     if (XYZ_TRANS !== null) viewer.addModel(XYZ_TRANS, "xyz");
+    stripIonBonds(viewer.getModel(0));
+    if (XYZ_TRANS !== null) stripIonBonds(viewer.getModel(1));
     viewer.setViewStyle({ style: "outline", color: "black", width: $outline });
     for (const [el, r] of Object.entries(RADII)) {
       viewer.setStyle({model: 0, elem: el},

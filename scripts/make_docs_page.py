@@ -139,15 +139,19 @@ def build_showcases() -> list[dict]:
     def _electrolyte():
         from ase import Atoms as _Atoms
         cnt = build_nanotube(10, 10, length=18)
-        filled = assemble.fill_inside(cnt, water, n=22)
+        # ions FIRST with a wide tolerance so they disperse along the tube;
+        # water then fills around them (sequential water-first left the ions
+        # clumped in one leftover pocket)
+        filled = assemble.fill_inside(cnt, _Atoms("K"), n=3, tolerance=5.0)
         filled.info["provenance"] = {"type": "nanotube"}   # keep the cylinder
-        filled = assemble.fill_inside(filled, _Atoms("K"), n=3)   # constraint
-        filled.info["provenance"] = {"type": "nanotube"}   # for the ion fills
-        filled = assemble.fill_inside(filled, _Atoms("Cl"), n=3)
-        return filled[len(cnt):], filled[:len(cnt)]        # wall translucent
+        filled = assemble.fill_inside(filled, _Atoms("Cl"), n=3, tolerance=5.0)
+        filled.info["provenance"] = {"type": "nanotube"}   # for each refill
+        filled = assemble.fill_inside(filled, water, n=22)
+        n_wall = len(cnt)
+        return filled[n_wall:], filled[:n_wall]            # wall translucent
 
     solid, trans = _cached_case(
-        "electrolyte_cnt", {"nm": "10x10x18", "waters": 22, "kcl": 3, "v": 1},
+        "electrolyte_cnt", {"nm": "10x10x18", "waters": 22, "kcl": 3, "v": 2},
         _electrolyte)
     n_k = solid.get_chemical_symbols().count("K")
     n_cl_ions = solid.get_chemical_symbols().count("Cl")
@@ -489,10 +493,29 @@ def main() -> None:
     }}
     ctx.globalAlpha = 1;
   }}
+  // free ions are not covalently bonded: drop inferred bonds involving
+  // alkali/alkaline-earth atoms, and halide bonds to anything but carbon
+  const CATIONS = new Set(["Li","Na","K","Rb","Cs","Mg","Ca","Sr","Ba"]);
+  const HALIDES = new Set(["F","Cl","Br","I"]);
+  function stripIonBonds(model) {{
+    const atoms = model.selectedAtoms({{}});
+    const drop = (a, b) => CATIONS.has(a.elem) || CATIONS.has(b.elem) ||
+      (HALIDES.has(a.elem) && b.elem !== "C") ||
+      (HALIDES.has(b.elem) && a.elem !== "C");
+    for (const a of atoms) {{
+      const bonds = [], orders = [];
+      a.bonds.forEach((bi, k) => {{
+        if (!drop(a, atoms[bi])) {{ bonds.push(bi); orders.push(a.bondOrder[k]); }}
+      }});
+      a.bonds = bonds; a.bondOrder = orders;
+    }}
+  }}
   function makeViewer(id, d) {{
     const v = $3Dmol.createViewer(id, {{backgroundColor: "{BG}", orthographic: true}});
     v.addModel(d.solid, "xyz");
     if (d.trans) v.addModel(d.trans, "xyz");
+    stripIonBonds(v.getModel(0));
+    if (d.trans) stripIonBonds(v.getModel(1));
     v.setViewStyle({{style: "outline", color: "black", width: {OUTLINE}}});
     for (const [el, r] of Object.entries(RADII)) {{
       v.setStyle({{model: 0, elem: el}}, {{stick: {{radius: {STICK}, colorscheme: "Jmol"}},
