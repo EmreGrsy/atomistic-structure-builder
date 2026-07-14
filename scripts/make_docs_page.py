@@ -484,6 +484,23 @@ def main() -> None:
   const DATA = {json.dumps(data)};
   const RADII = {json.dumps(radii)};
   const COLORS = {json.dumps(CUSTOM_COLORS)};
+  // free ions are not covalently bonded: drop inferred bonds involving
+  // alkali or alkaline earth atoms, and halide bonds to anything but carbon
+  const CATIONS = new Set(["Li","Na","K","Rb","Cs","Mg","Ca","Sr","Ba"]);
+  const HALIDES = new Set(["F","Cl","Br","I"]);
+  function stripIonBonds(model) {{
+    const atoms = model.selectedAtoms({{}});
+    const drop = (a, b) => CATIONS.has(a.elem) || CATIONS.has(b.elem) ||
+      (HALIDES.has(a.elem) && b.elem !== "C") ||
+      (HALIDES.has(b.elem) && a.elem !== "C");
+    for (const a of atoms) {{
+      const bonds = [], orders = [];
+      a.bonds.forEach((bi, k) => {{
+        if (!drop(a, atoms[bi])) {{ bonds.push(bi); orders.push(a.bondOrder[k]); }}
+      }});
+      a.bonds = bonds; a.bondOrder = orders;
+    }}
+  }}
   function makeViewer(id, d) {{
     const v = $3Dmol.createViewer(id, {{backgroundColor: "{BG}", orthographic: true}});
     v.addModel(d.solid, "xyz");
