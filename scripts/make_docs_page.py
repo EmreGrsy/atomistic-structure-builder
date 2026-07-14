@@ -139,29 +139,26 @@ def build_showcases() -> list[dict]:
     def _electrolyte():
         from ase import Atoms as _Atoms
         cnt = build_nanotube(10, 10, length=18)
-        # ions FIRST with a wide tolerance so they disperse along the tube;
-        # water then fills around them (sequential water-first left the ions
-        # clumped in one leftover pocket)
-        filled = assemble.fill_inside(cnt, _Atoms("K"), n=3, tolerance=5.0)
-        filled.info["provenance"] = {"type": "nanotube"}   # keep the cylinder
-        filled = assemble.fill_inside(filled, _Atoms("Cl"), n=3, tolerance=5.0)
-        filled.info["provenance"] = {"type": "nanotube"}   # for each refill
-        filled = assemble.fill_inside(filled, water, n=22)
+        # ONE ion, placed deterministically at the tube center; water then
+        # fills the cylinder around it
+        ion = _Atoms("K", positions=[cnt.get_positions().mean(axis=0)])
+        host = cnt + ion
+        host.info["provenance"] = {"type": "nanotube"}     # keep the cylinder
+        filled = assemble.fill_inside(host, water, n=44)
         n_wall = len(cnt)
         return filled[n_wall:], filled[:n_wall]            # wall translucent
 
     solid, trans = _cached_case(
-        "electrolyte_cnt", {"nm": "10x10x18", "waters": 22, "kcl": 3, "v": 2},
+        "electrolyte_cnt", {"nm": "10x10x18", "waters": 44, "ions": 1, "v": 3},
         _electrolyte)
-    n_k = solid.get_chemical_symbols().count("K")
-    n_cl_ions = solid.get_chemical_symbols().count("Cl")
-    print(f"  electrolyte check: {n_k} K, {n_cl_ions} Cl ions present")
+    print(f"  electrolyte check: {solid.get_chemical_symbols().count('K')} "
+          "K ion present")
     cases.append(dict(
         title="Confined electrolyte",
-        prompt="water with 3 KCl ion pairs inside a (10,10) carbon nanotube",
-        caption="Packmol cylinder fills, ions packed into the water; the "
-                "enclosing tube wall renders translucent so the confined "
-                "phase stays visible.",
+        prompt="water with a potassium ion inside a (10,10) carbon nanotube",
+        caption="A single solvated ion at the tube center, water packed "
+                "around it (Packmol cylinder fill); the enclosing tube wall "
+                "renders translucent so the confined phase stays visible.",
         solid=solid, trans=trans, cellsrc=trans))
 
     oleic = get_molecule("oleic acid")
