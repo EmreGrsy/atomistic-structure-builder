@@ -29,6 +29,9 @@ THEME = THEMES["warm_gray"]
 STICK_RADIUS = 0.12
 VDW_FACTOR = 0.44            # toon ball-and-stick: spheres at 44% of the vdW radius
 ENCLOSURE_OPACITY = 0.5
+# element color overrides (user's publication convention: Fe in blue);
+# every other element keeps its Jmol color
+CUSTOM_COLORS = {"Fe": "#3565c0"}
 DEFAULT_AXES = [["[100]", [1, 0, 0]], ["[010]", [0, 1, 0]], ["[001]", [0, 0, 1]]]
 
 _TEMPLATE = Template("""<!DOCTYPE html>
@@ -89,14 +92,16 @@ _TEMPLATE = Template("""<!DOCTYPE html>
     stripIonBonds(viewer.getModel(0));
     if (XYZ_TRANS !== null) stripIonBonds(viewer.getModel(1));
     viewer.setViewStyle({ style: "outline", color: "black", width: $outline });
+    const COLORS = $custom_colors;
     for (const [el, r] of Object.entries(RADII)) {
+      const col = COLORS[el] ? {color: COLORS[el]} : {colorscheme: "Jmol"};
       viewer.setStyle({model: 0, elem: el},
-        { stick: { radius: $stick, colorscheme: "Jmol" },
-          sphere: { radius: r, colorscheme: "Jmol" } });
+        { stick: { radius: $stick, ...col },
+          sphere: { radius: r, ...col } });
       if (XYZ_TRANS !== null)
         viewer.setStyle({model: 1, elem: el},
-          { stick: { radius: $stick, colorscheme: "Jmol", opacity: $opacity },
-            sphere: { radius: r, colorscheme: "Jmol", opacity: $opacity } });
+          { stick: { radius: $stick, ...col, opacity: $opacity },
+            sphere: { radius: r, ...col, opacity: $opacity } });
     }
     for (const e of EDGES) {
       viewer.addLine({ start: {x: e[0][0], y: e[0][1], z: e[0][2]},
@@ -179,11 +184,15 @@ def _legend_html(*xyzs: str) -> str:
                 counts[tok[0]] = counts.get(tok[0], 0) + 1
     chips = []
     for el, n in sorted(counts.items(), key=lambda kv: -kv[1]):
-        z = atomic_numbers.get(el)
-        r, g, b = ((jmol_colors[z] * 255).astype(int) if z is not None
-                   else (128, 128, 128))
+        if el in CUSTOM_COLORS:
+            bg = CUSTOM_COLORS[el]
+        else:
+            z = atomic_numbers.get(el)
+            r, g, b = ((jmol_colors[z] * 255).astype(int) if z is not None
+                       else (128, 128, 128))
+            bg = f"rgb({r},{g},{b})"
         chips.append(f'<span class="chip"><span class="dot" '
-                     f'style="background: rgb({r},{g},{b})"></span>{el} ({n})</span>')
+                     f'style="background: {bg}"></span>{el} ({n})</span>')
     return "".join(chips)
 
 
@@ -261,6 +270,7 @@ def build_html(source: str | os.PathLike, title: str = "geometry",
         title=title, natoms=natoms, width=width, height=height,
         bg=th["bg"], text=th["text"], cellcolor=th["cell"], outline=th["outline"],
         stick=STICK_RADIUS, opacity=ENCLOSURE_OPACITY,
+        custom_colors=json.dumps(CUSTOM_COLORS),
         legend=_legend_html(xyz_solid, xyz_trans),
         # JSON-encode: a raw JS template literal would re-interpret escape
         # sequences in the extxyz comment (e.g. \n inside JSON-encoded

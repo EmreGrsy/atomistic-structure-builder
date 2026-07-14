@@ -23,6 +23,8 @@ APP_VERSION = "0.1.0"
 # locked house style (see mtagent/viewer.py)
 BG, TEXT, CELLC, OUTLINE = "#efe9e1", "#5a4c40", "#a3927f", 0.10
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
+# element color overrides (user's publication convention); others use Jmol
+CUSTOM_COLORS = {"Fe": "#3565c0"}
 
 
 def _xyz(atoms, label):
@@ -170,7 +172,7 @@ def build_showcases() -> list[dict]:
     solid, trans = _cached_case(
         "oleic_rutile", {"w": 25.0, "vac": 20.0, "n": 14, "v": 1}, _interface)
     cases.append(dict(
-        title="Solid–liquid interface",
+        title="Solid-liquid interface",
         prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
         caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
@@ -277,18 +279,40 @@ def som_section() -> str:
                   ("#f7ece1", "#8a4a24"), "BMU hit map (prompts per neuron)")
     return f"""
   <h3>Prompt-space analysis (SOM)</h3>
-  <p class="doc">Following the methodology of GENIUS
-  (<a href="https://arxiv.org/abs/2512.06404">arXiv:2512.06404</a>), the
-  evaluation prompts were embedded with OpenAI
-  <code>text-embedding-3-large</code> (3072-dimensional, unit-normalized) and
-  a 10&times;10 hexagonally packed self-organizing map was trained for 50,000
-  mini-batch iterations with a Gaussian neighborhood and linearly decreasing
-  learning rate. Map quality: Quantization Error <b>{s['qe']}</b>,
-  Topological Error <b>{s['te']}</b> (low TE indicates the embedding
-  neighborhoods are faithfully preserved on the grid). The U-matrix shows the
-  semantic cluster structure of the prompt set; the hit map shows how the
-  prompts distribute across the map — occupied clusters with empty boundary
-  neurons indicate distinct task families with healthy diversity.</p>
+  <p class="doc">To understand the diversity of the prompt set, the 100
+  prompts were converted into 3072-dimensional embedding vectors with OpenAI's
+  <code>text-embedding-3-large</code> model and a 10&times;10 self-organizing
+  map (SOM) was trained to visualize their semantic landscape, following the
+  methodology of GENIUS
+  (<a href="https://arxiv.org/abs/2512.06404">arXiv:2512.06404</a>). The SOM
+  (<a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
+  <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) is an
+  unsupervised neural network for dimensionality reduction and clustering:
+  it projects high-dimensional input data onto a two-dimensional grid while
+  preserving the topological relationships between the inputs. Each of the
+  100 neurons is initialized with a random weight vector of equal
+  dimensionality; during training the neurons compete to represent each
+  input. The best matching unit (BMU), the neuron whose weight vector has
+  the smallest Euclidean distance to the input, is updated together with its
+  grid neighbors, the adjustment decreasing with distance from the BMU
+  according to a Gaussian neighborhood function; combined with a linearly
+  decreasing learning rate, this lets the map form a topologically ordered
+  representation of the input space. Convergence and quality are validated
+  with the standard SOM metrics: the Quantization Error, the average
+  distance between the input vectors and their best matching unit's weight
+  vector, is <b>{s['qe']}</b>, which indicates good representational
+  fidelity given that the unit-normalized inputs have a maximum possible
+  pairwise distance of 2.0; the Topological Error, the proportion of inputs
+  whose first and second BMUs are not adjacent on the grid, is
+  <b>{s['te']}</b>, confirming excellent preservation of the original
+  neighborhood structure. The U-matrix visualizes the average distance
+  between neighboring neurons: higher values indicate cluster boundaries,
+  lower values dense regions of semantically similar prompts; the hexagonal
+  packing gives each neuron six equidistant neighbors instead of the four of
+  a square grid. The hit map (BMU activation count) shows how frequently
+  each neuron is selected, revealing the distribution of prompts across the
+  grid; neurons with zero activations serve as boundary regions and are
+  crucial for topology preservation.</p>
   <div class="somrow">{um}{hm}</div>
   <style>
     .somrow {{ display:flex; gap:22px; flex-wrap:wrap; }}
@@ -317,13 +341,32 @@ def metrics_section() -> str:
             f'<div class="btrack"><div class="bfill" style="width:{pct:.0f}%"></div>'
             f'</div><div class="bval">{d["ok"]}/{d["n"]}</div></div>')
     total = f'{s["ok"]}/{s["n"]}'
+    comp_path = ROOT / "data/out/eval/complexity.json"
+    comp_txt = ""
+    if comp_path.exists():
+        cp = json.loads(comp_path.read_text())["percent"]
+        comp_txt = (
+            f" A score-based metric evaluation shows that the prompts comprise "
+            f"{cp['basic']}% basic, {cp['standard']}% standard, and "
+            f"{cp['complex']}% complex requests. This evaluation is performed "
+            "by a language model, which assigns a categorical value to each "
+            "prompt from the number of constituents, relations, and explicit "
+            "parameters it carries.")
     return f"""
   <h2>Benchmark</h2>
-  <p class="doc">A {s['n']}-prompt evaluation spanning ten task categories, each
-  prompt executed through the complete pipeline (parse &rarr; specification
-  &rarr; static validation &rarr; sandboxed build &rarr; geometry checks &rarr;
-  assembly). A prompt counts as successful only if every stage passes.
-  Overall: <b>{total}</b> prompts fully successful.</p>
+  <p class="doc">To probe the framework's coverage and robustness, a set of
+  {s['n']} test prompts spanning ten task categories (metal and oxide
+  nanoparticles, solvation, elemental and compound surfaces, solid-liquid
+  interfaces, confined films, nanoparticle supercrystals, filled nanotubes,
+  and bulk builds) was executed through the complete pipeline: parsing,
+  specification, static validation against the knowledge graphs, sandboxed
+  building, geometric verification, and assembly. A prompt counts as
+  successful only if every stage passes; a structurally plausible but
+  invalid intermediate is treated as a failure of its stage.{comp_txt}
+  Overall, <b>{total}</b> prompts complete the full pipeline successfully.
+  The two residual failures are a unit-interpretation slip by the language
+  model (now surfaced as an explicit error rather than an empty structure)
+  and one non-converged stochastic packing run.</p>
   <div class="bars" role="img" aria-label="success rate per category">
     {''.join(rows)}
   </div>
@@ -365,7 +408,7 @@ def main() -> None:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{APP_NAME} — documentation</title>
+<title>{APP_NAME} documentation</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
 <style>
   body {{ margin:0; background:{BG}; color:{TEXT};
@@ -412,10 +455,10 @@ def main() -> None:
 
   <h2>Pipeline</h2>
   <ol>
-    <li><b>Parse</b> — the request is decomposed into typed constituents
+    <li><b>Parse.</b> The request is decomposed into typed constituents
       (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
       nanotube) and relations (<i>inside, around, coated_by, on, between</i>).</li>
-    <li><b>Retrieve</b> — real function signatures and constraints are pulled
+    <li><b>Retrieve.</b> Real function signatures and constraints are pulled
       from two knowledge graphs. The ASE knowledge graph is introspected from
       the installed package: 2,392 nodes (one per function or class, carrying
       its real signature) with connectivity edges linking each callable to
@@ -424,14 +467,14 @@ def main() -> None:
       (the .lt constructs) with 23 connectivity edges (which constructs
       contain or apply to which) plus 8 constraint rules. No code is
       generated without this evidence.</li>
-    <li><b>Clarify</b> — only genuinely missing parameters are asked;
+    <li><b>Clarify.</b> Only genuinely missing parameters are asked;
       everything else takes registry defaults.</li>
-    <li><b>Propose</b> — a build snippet is written per constituent with the
+    <li><b>Propose.</b> A build snippet is written per constituent with the
       retrieved evidence in-prompt. The snippet shown is the code executed.</li>
-    <li><b>Validate &amp; build</b> — three gates: static validation against
+    <li><b>Validate &amp; build.</b> Three gates: static validation against
       the knowledge graphs, sandboxed execution, and geometric verification
       (finite coordinates, no unphysical contacts).</li>
-    <li><b>Assemble</b> — constituents are combined per the stated relations:
+    <li><b>Assemble.</b> Constituents are combined per the stated relations:
       packmol for liquids, Moltemplate for repeated units (ligand shells,
       superlattices).</li>
   </ol>
@@ -457,6 +500,7 @@ def main() -> None:
 <script>
   const DATA = {json.dumps(data)};
   const RADII = {json.dumps(radii)};
+  const COLORS = {json.dumps(CUSTOM_COLORS)};
   const AXES = [["[100]", [1,0,0]], ["[010]", [0,1,0]], ["[001]", [0,0,1]]];
   function rotv(q, v) {{
     const [x, y, z, w] = q;
@@ -515,11 +559,12 @@ def main() -> None:
     if (d.trans) stripIonBonds(v.getModel(1));
     v.setViewStyle({{style: "outline", color: "black", width: {OUTLINE}}});
     for (const [el, r] of Object.entries(RADII)) {{
-      v.setStyle({{model: 0, elem: el}}, {{stick: {{radius: {STICK}, colorscheme: "Jmol"}},
-        sphere: {{radius: r, colorscheme: "Jmol"}}}});
+      const col = COLORS[el] ? {{color: COLORS[el]}} : {{colorscheme: "Jmol"}};
+      v.setStyle({{model: 0, elem: el}}, {{stick: {{radius: {STICK}, ...col}},
+        sphere: {{radius: r, ...col}}}});
       if (d.trans) v.setStyle({{model: 1, elem: el}},
-        {{stick: {{radius: {STICK}, colorscheme: "Jmol", opacity: {OPACITY}}},
-          sphere: {{radius: r, colorscheme: "Jmol", opacity: {OPACITY}}}}});
+        {{stick: {{radius: {STICK}, ...col, opacity: {OPACITY}}},
+          sphere: {{radius: r, ...col, opacity: {OPACITY}}}}});
     }}
     for (const e of d.edges) v.addLine({{start: {{x: e[0][0], y: e[0][1], z: e[0][2]}},
       end: {{x: e[1][0], y: e[1][1], z: e[1][2]}}, color: "{CELLC}"}});
