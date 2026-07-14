@@ -20,8 +20,10 @@ sys.path.insert(0, str(ROOT))
 APP_NAME = "Atomistic Structure Builder"
 APP_VERSION = "0.1.0"
 
-# locked house style (see mtagent/viewer.py)
+# viewer style stays warm (see mtagent/viewer.py); the PAGE itself follows
+# the app's default Streamlit palette
 BG, TEXT, CELLC, OUTLINE = "#efe9e1", "#5a4c40", "#a3927f", 0.10
+PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#ffffff", "#262730", "#d5d9e0", "#f0f2f6"
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
 # element color overrides (user's publication convention); others use Jmol
 CUSTOM_COLORS = {"Fe": "#3565c0"}
@@ -254,9 +256,9 @@ def _hex_svg(coords, values, labels, ramp, title) -> str:
         cx, cy = x * S + S, y * S + S
         cells.append(f'<g transform="translate({cx:.1f},{cy:.1f})">'
                      f'<polygon points="{hexpts}" fill="{lerp(*ramp, t)}" '
-                     f'stroke="{BG}" stroke-width="2"/>'
+                     f'stroke="{PAGE_BG}" stroke-width="2"/>'
                      + (f'<text y="4" text-anchor="middle" font-size="11" '
-                        f'fill="{TEXT}">{lab}</text>' if lab else "") + "</g>")
+                        f'fill="{PAGE_TEXT}">{lab}</text>' if lab else "") + "</g>")
     return (f'<figure class="som"><svg viewBox="0 0 {w:.0f} {h:.0f}" '
             f'role="img" aria-label="{title}">{"".join(cells)}</svg>'
             f'<figcaption>{title} <span class="rlab">{vmin:.2f}</span>'
@@ -317,7 +319,7 @@ def metrics_section() -> str:
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
     # single-hue horizontal bars sampled from the U matrix ramp (4.0:1)
-    bar, track, ink = "#597868", "rgba(90,76,64,.12)", TEXT
+    bar, track, ink = "#597868", "rgba(38,39,48,.10)", PAGE_TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
@@ -364,7 +366,7 @@ def metrics_section() -> str:
     .bfill {{ height:100%; background:{bar}; border-radius:4px; }}
     .bval {{ width:48px; font-size:12.5px; color:{ink}; opacity:.75; }}
     .promptlink {{ display:inline-block; margin-top:6px; padding:7px 14px;
-      background:{bar}; color:#f5f0e8; border-radius:8px; font-weight:600;
+      background:{bar}; color:#ffffff; border-radius:8px; font-weight:600;
       text-decoration:none; }}
     .promptlink:hover {{ filter:brightness(1.1); }}
   </style>"""
@@ -401,29 +403,29 @@ def main() -> None:
 <title>{APP_NAME} documentation</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
 <style>
-  body {{ margin:0; background:{BG}; color:{TEXT};
+  body {{ margin:0; background:{PAGE_BG}; color:{PAGE_TEXT};
          font-family:'Segoe UI', system-ui, sans-serif; }}
   main {{ max-width:1200px; margin:0 auto; padding:36px 24px 64px; }}
   h1 {{ font-size:28px; margin:0; }}
   .tagline {{ font-size:15px; opacity:.8; margin:4px 0 0; }}
   .version {{ font-size:12.5px; opacity:.55; }}
-  h2 {{ font-size:19px; margin:36px 0 8px; border-bottom:1px solid {CELLC};
+  h2 {{ font-size:19px; margin:36px 0 8px; border-bottom:1px solid {PAGE_LINE};
         padding-bottom:4px; }}
   p.doc, li {{ font-size:14.5px; line-height:1.55; }}
   ol {{ padding-left:22px; }}
   .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
            gap:18px; margin-top:14px; }}
-  .card {{ background:#f5f0e8; border:1px solid {CELLC}44; border-radius:12px;
+  .card {{ background:{CARD_BG}; border:1px solid {PAGE_LINE}; border-radius:12px;
            overflow:hidden; }}
   .cardhead {{ padding:12px 14px 8px; }}
   .cardtitle {{ font-weight:700; font-size:15px; }}
   .prompt {{ font-size:12.5px; margin-top:3px; font-family:ui-monospace,monospace;
-             background:{BG}; border:1px solid {CELLC}55; border-radius:6px;
+             background:{PAGE_BG}; border:1px solid {PAGE_LINE}; border-radius:6px;
              padding:4px 8px; display:inline-block; }}
   .viewer {{ width:100%; height:380px; position:relative; }}
   .caption {{ padding:8px 14px 12px; font-size:12.5px; opacity:.8; }}
   .n {{ opacity:.7; }}
-  code {{ background:#f5f0e8; padding:1px 5px; border-radius:4px; }}
+  code {{ background:{CARD_BG}; padding:1px 5px; border-radius:4px; }}
 </style>
 </head>
 <body>
