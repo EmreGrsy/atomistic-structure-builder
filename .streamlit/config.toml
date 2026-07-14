@@ -1,12 +1,4 @@
-# Atomistic Structure Builder, app theme matched to the documentation page
-[theme]
-base = "light"
-backgroundColor = "#efe9e1"
-secondaryBackgroundColor = "#f5f0e8"
-textColor = "#5a4c40"
-primaryColor = "#4a7d5f"
-font = "sans serif"
-
+# Atomistic Structure Builder
 [server]
 # serves ./static so the documentation pages are reachable from the app
 enableStaticServing = true
