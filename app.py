@@ -50,11 +50,11 @@ st.markdown("""<style>
 [data-testid="stExpander"] * {
     -webkit-user-select: text !important; user-select: text !important; }
 </style>""", unsafe_allow_html=True)
-APP_NAME = "Atomic Builder Agent"
+APP_NAME = "Atomistic Structure Builder"
 APP_VERSION = "0.1.0"
 
 st.title(APP_NAME)
-st.caption("A knowledge-graph-grounded molecular structure builder")
+st.caption("A knowledge-graph-grounded atomistic structure builder")
 st.caption("KG-grounded structure builder — the code you see is the code that runs. "
            "Geometry only (MD equilibration is a later pipeline stage).")
 
@@ -194,9 +194,8 @@ def suggestion_message(state: dict, final: dict, proposals: dict) -> str:
     raw = {c["key"]: (c.get("spec") or {}) for c in state["constituents"]}
     names = " and ".join(f"**{c['key']}**" for c in cs)
     n = len(cs)
-    out = [f"The system you're interested in has **{n} constituent{'s' if n > 1 else ''}**: "
-           f"{names}. Here is the suggested build for each — the snippet shown is "
-           "exactly what will run (validated against the knowledge graphs):"]
+    out = [f"**{n} constituent{'s' if n > 1 else ''}**: {names} — "
+           "here is the suggested build:"]
 
     for c in cs:
         p = proposals[c["key"]]
@@ -342,7 +341,8 @@ _EXAMPLES = (
 
 with st.sidebar:
     st.markdown(f"**{APP_NAME}** · v{APP_VERSION}")
-    st.caption("Knowledge-graph-grounded molecular structure builder")
+    st.caption("KG-grounded structure builder — the code you see is the code "
+               "that runs. Geometry only.")
 
     with st.expander("Documentation", expanded=False):
         st.markdown("""
@@ -584,7 +584,7 @@ if prompt:
 
 # ------------------------------ build button ----------------------------------
 if SS.final is not None and SS.results is None:
-    if st.button("Build every constituent + combined structure", type="primary"):
+    if st.button("Build", type="primary"):
         try:
             build_all()
         except Exception:
