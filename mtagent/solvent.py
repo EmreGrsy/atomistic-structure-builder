@@ -55,12 +55,15 @@ def build_solvent_box(molecule: Atoms, box_size: float = 40.0, density: float | 
             n = None
         if n is not None and n < 1:
             n = None                    # 0 or negative = fill at density
+    explicit_n = n is not None
     if n is None:
         if density is None:
             density = SOLVENT_DENSITY.get(name, 1.0)
             target_density = density
         n = n_for_density(molecule, box_size, density)
-    capped = n * len(molecule) > max_atoms
+    # the cap protects density AUTOFILLS from packmol blowups; a count the
+    # user explicitly requested is honored as given
+    capped = (not explicit_n) and n * len(molecule) > max_atoms
     if capped:
         n = max(1, max_atoms // len(molecule))
 

@@ -431,36 +431,78 @@ _BUILDER_NOUNS = {"surface": "surface_slab", "slab": "surface_slab",
 
 
 def _new_system_hint(state: dict, message: str) -> bool:
-    """A terse message naming a builder TYPE the current system doesn't have
-    ("magnetite surface" while building a nanoparticle) is a NEW system —
-    the LLM tends to misroute it as a question/edit about the current one.
-    Additive phrasings ("add ...", "also ...") stay with the current system."""
+    """A message naming a builder TYPE the current system doesn't have
+    ("magnetite surface and 50 oleic acid molecules on top" while building a
+    nanoparticle) is a NEW system — the LLM tends to misroute it as an edit
+    of the current one. Messages that mention a CURRENT builder noun or start
+    with a modification verb ("add a gold surface on top") stay edits."""
     words = re.findall(r"[a-z]+", message.lower())
-    if len(words) > 5 or {"add", "also", "plus", "with", "and"} & set(words):
+    if not words:
         return False
     current = {c.get("builder") for c in state.get("constituents", [])}
     named = {b for w, b in _BUILDER_NOUNS.items() if w in words}
-    return bool(named) and not (named & current)
+    if not (named - current):
+        return False                     # nothing new named
+    if any(w in words for w, b in _BUILDER_NOUNS.items() if b in current):
+        return False                     # they reference the current system
+    if words[0] in {"add", "also", "put", "place", "coat", "cover", "make",
+                    "set", "change", "increase", "decrease", "remove", "keep",
+                    "use", "give", "fill", "solvate"}:
+        return False                     # modification verbs anchor to it
+    return True
+
+
+_MOLAR = {"water": 18.02, "ethanol": 46.07, "methanol": 32.04, "hexane": 86.18,
+          "toluene": 92.14, "benzene": 78.11, "acetone": 58.08, "ammonia": 17.03}
+_NATOMS = {"water": 3, "ethanol": 9, "methanol": 6, "hexane": 20, "toluene": 15,
+           "benzene": 12, "acetone": 10, "ammonia": 4}
 
 
 def _apply_add_count_hint(old_state: dict, new_state: dict, message: str) -> None:
-    """Deterministic 'add N (more) water' on an EXISTING guest: the LLM merge
-    regularly no-ops this (a +1 looks like the n=1 hallucination its rules
-    drop). If the named guest's relation count is explicit and unchanged,
-    bump it by N. Auto-filled (count=None) relations are left alone — the
-    fill count is density-derived, so +N would mean replacing auto with N."""
+    """Deterministic increments: 'add N (more) water' or 'increase the water
+    molecules by N' on an EXISTING guest — the LLM merge regularly no-ops
+    these. Molecule guests bump the relation count; solvent_box guests get an
+    explicit n (current effective fill + N) and a box grown to hold it."""
     m = re.search(r"\badd\s+(\d+)\s+(?:more\s+)?(\w+)", message, re.IGNORECASE)
-    if not m:
-        return
-    n, name = int(m.group(1)), m.group(2).lower().rstrip("s")
+    if m:
+        n, name = int(m.group(1)), m.group(2).lower().rstrip("s")
+    else:
+        m = re.search(r"\bincrease\s+(?:the\s+)?(\w+)[\w\s]*?\bby\s+(\d+)",
+                      message, re.IGNORECASE)
+        if not m:
+            return
+        name, n = m.group(1).lower().rstrip("s"), int(m.group(2))
     old_counts = {(r["host"], r["guest"]): (r.get("params") or {}).get("count")
                   for r in old_state.get("relations") or []}
     for rel in new_state.get("relations") or []:
         gc = next((c for c in new_state.get("constituents", [])
                    if c["key"] == rel["guest"]), None)
-        gname = str((gc or {}).get("spec", {}).get("name") or rel["guest"]).lower()
+        spec = (gc or {}).get("spec", {})
+        gname = str(spec.get("name") or spec.get("molecule") or rel["guest"]).lower()
         if name not in gname and name not in rel["guest"].lower():
             continue
+        if gc and gc.get("builder") == "solvent_box":
+            mol = str(spec.get("molecule") or "water").lower()
+            from .solvent import SOLVENT_DENSITY
+            rho = SOLVENT_DENSITY.get(mol, 1.0)
+            molar = _MOLAR.get(mol, 18.02)
+            natoms = _NATOMS.get(mol, 3)
+            box = float(spec.get("box_size") or 40.0)
+            old_gc = next((c for c in old_state.get("constituents", [])
+                           if c["key"] == rel["guest"]), None)
+            old_n = (old_gc or {}).get("spec", {}).get("n")
+            if old_n and spec.get("n") not in (old_n, None):
+                return                             # the LLM already applied it
+            if old_n:
+                base = int(old_n)
+            else:                                  # density autofill, capped
+                dens_n = round(rho * (box * 1e-8) ** 3 * 6.022e23 / molar)
+                base = min(dens_n, max(1, 8000 // natoms))
+            total = base + n
+            spec["n"] = total
+            need = (total * molar / (rho * 6.022e23)) ** (1.0 / 3.0) * 1e8
+            spec["box_size"] = max(box, round(need, 1))
+            return
         old_c = old_counts.get((rel["host"], rel["guest"]))
         new_c = (rel.get("params") or {}).get("count")
         if isinstance(old_c, (int, float)) and old_c \
@@ -478,7 +520,9 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
            if c.get("builder") == "nanoparticle"]
     if not nps:
         return
-    m = re.search(r"\b(\d+)\s+(?:\w+\s+){0,2}?(?:nanoparticles?|particles?|nps?)\b",
+    m = re.search(r"\b(\d+)\s+(?!nm\b|angstrom|Å|A\b)"
+                  r"(?:(?!nm\b|angstrom)\w+\s+){0,2}?"
+                  r"(?:nanoparticles?|particles?|nps?)\b",
                   message, re.IGNORECASE)
     if not m:
         m = re.search(r"\b(?:cluster|supercrystal|superlattice|assembly)\s+"
