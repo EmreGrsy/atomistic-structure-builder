@@ -302,16 +302,16 @@ def build_all() -> None:
     with st.status("Building the structures…", expanded=True) as sb:
         for c in SS.final["constituents"]:
             key = c["key"]
-            sb.write(f"**{key}**: executing its validated snippet…")
+            sb.write(f"**{key}**: building…")
             atoms = run_snippet(SS.proposals[key].code)               # Gate 2
             results[key] = (atoms, verify_atoms(atoms))               # Gate 3
-            sb.write(f"**{key}**: {len(atoms)} atoms built")
+            sb.write(f"**{key}**: {len(atoms)} atoms")
         if rels and "showcase" in SS.proposals:
-            sb.write(f"combining: {rel_label(SS.final)}…")
+            sb.write(f"Combining: {rel_label(SS.final)}…")
             inputs = {k: a for k, (a, _) in results.items()}
             atoms = run_snippet(SS.proposals["showcase"].code, inputs)
             results["showcase"] = (atoms, verify_atoms(atoms))
-            sb.write(f"combined structure: {len(atoms)} atoms built")
+            sb.write(f"Combined: {len(atoms)} atoms")
         sb.update(label="Build finished", state="complete", expanded=False)
     SS.results = results
     built = ", ".join(
@@ -444,7 +444,7 @@ for i, m in enumerate(SS.messages):
 
 
 def parse_fresh(prompt: str, sb) -> None:
-    sb.write("understanding the request: LLM parses it into typed constituents…")
+    sb.write("Parsing the request…")
     state = clarify.parse_query(prompt)
     if not state["constituents"]:
         SS.messages.append({"role": "assistant", "content":
@@ -453,11 +453,11 @@ def parse_fresh(prompt: str, sb) -> None:
                             "directly, e.g. *\"a carbon nanotube with methanol\"*."})
         return
     names = ", ".join(c["key"] for c in state["constituents"])
-    sb.write(f"constituents identified: **{names}**")
-    sb.write("retrieving the real function signatures from the knowledge graphs, "
-             "writing the build code, validating it…")
+    sb.write(f"Constituents: **{names}**")
+    sb.write("Retrieving knowledge graph evidence, writing and validating "
+             "the build code…")
     refresh(state)
-    sb.write("done, suggestion posted below.")
+    sb.write("Done.")
 
 
 prompt = st.chat_input("Describe the structure, adjust parameters, or say 'build'…")
@@ -476,23 +476,22 @@ if prompt:
             build_all()
         else:
             with st.status("Working on it…", expanded=True) as sb:
-                sb.write("deciding what you mean: question, parameter change, "
-                         "new system, or build…")
+                sb.write("Routing your message…")
                 gap = ground.Gap(**SS.gap) if SS.gap else None
                 r = clarify.respond(SS.spec, prompt, gap, qa_context())
                 if r["intent"] == "question":
-                    sb.write("answering from the current spec, code and sources…")
+                    sb.write("Answering…")
                     SS.messages.append({"role": "assistant",
                                         "content": r["answer"] or "I'm not sure, "
                                         "could you rephrase that?"})
                 elif r["intent"] == "new":
-                    sb.write("that's a different system, starting a fresh plan…")
+                    sb.write("New system, parsing fresh…")
                     for k in ("spec", "gap", "final", "proposals", "results"):
                         SS[k] = None
                     parse_fresh(prompt, sb)
                 elif r["intent"] == "edit" and json.dumps(
                         r["state"], sort_keys=True) != json.dumps(SS.spec, sort_keys=True):
-                    sb.write("applying your changes, re-validating the build code…")
+                    sb.write("Applying changes…")
                     refresh(r["state"])
                 elif r["intent"] == "edit":
                     SS.messages.append({"role": "assistant", "content":
