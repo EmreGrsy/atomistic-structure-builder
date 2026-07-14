@@ -47,7 +47,8 @@ def _edges(atoms_list):
             for i, j in pairs]
 
 
-def _fill_around(cluster, molecule, n: int, workdir="data/work/docs_fill"):
+def _fill_around(cluster, molecule, n: int, margin: float = -1.0,
+                 workdir="data/work/docs_fill"):
     """Pack n molecules into the cluster's bounding box (cluster fixed) and
     return ONLY the packed molecules (rendered as the translucent phase)."""
     import subprocess
@@ -56,7 +57,7 @@ def _fill_around(cluster, molecule, n: int, workdir="data/work/docs_fill"):
     work = Path(ROOT / workdir)
     work.mkdir(parents=True, exist_ok=True)
     p = cluster.get_positions()
-    lo, hi = p.min(axis=0) + 1.0, p.max(axis=0) - 1.0
+    lo, hi = p.min(axis=0) - margin, p.max(axis=0) + margin
     cl, mol, outx = work / "cluster.xyz", work / "mol.xyz", work / "filled.xyz"
     write(str(cl), cluster, format="xyz")
     m = molecule.copy()
@@ -70,7 +71,7 @@ def _fill_around(cluster, molecule, n: int, workdir="data/work/docs_fill"):
         f"  inside box {lo[0]:.2f} {lo[1]:.2f} {lo[2]:.2f} "
         f"{hi[0]:.2f} {hi[1]:.2f} {hi[2]:.2f}\nend structure\n")
     proc = subprocess.run([find_packmol()], stdin=(work / "fill.inp").open(),
-                          cwd=work, capture_output=True, text=True, timeout=300)
+                          cwd=work, capture_output=True, text=True, timeout=1200)
     if not outx.exists() or "Success" not in proc.stdout:
         raise RuntimeError(f"docs fill failed:\n{proc.stdout[-500:]}")
     return read(str(outx))[len(cluster):]
@@ -103,13 +104,19 @@ def build_showcases() -> list[dict]:
                 "solvent renders translucent.",
         solid=solv[:n_np], trans=solv[n_np:], cellsrc=solv))
 
+    from ase import Atoms as _Atoms
     cnt = build_nanotube(10, 10, length=12)
-    filled = assemble.fill_inside(cnt, ethanol, n=12)
+    filled = assemble.fill_inside(cnt, water, n=14)
+    filled.info["provenance"] = {"type": "nanotube"}   # keep the cylinder
+    filled = assemble.fill_inside(filled, _Atoms("Na"), n=2)  # constraint for
+    filled.info["provenance"] = {"type": "nanotube"}   # the ion fills
+    filled = assemble.fill_inside(filled, _Atoms("Cl"), n=2)
     cases.append(dict(
-        title="Confined liquid",
-        prompt="12 ethanol molecules inside a (10,10) carbon nanotube",
-        caption="Packmol cylinder fill; the enclosing tube wall renders "
-                "translucent so the guest phase stays visible.",
+        title="Confined electrolyte",
+        prompt="water with 2 Na and 2 Cl ions inside a (10,10) carbon nanotube",
+        caption="Packmol cylinder fills, ions packed into the water; the "
+                "enclosing tube wall renders translucent so the confined "
+                "phase stays visible.",
         solid=filled[len(cnt):], trans=filled[:len(cnt)], cellsrc=filled))
 
     oleic = get_molecule("oleic acid")
@@ -131,14 +138,14 @@ def build_showcases() -> list[dict]:
                 "wall clearances; one periodic cell.",
         solid=gsand, trans=None, cellsrc=gsand))
 
-    np14 = build_magnetite_wulff(diameter=14.0, gamma=round_gamma)
+    np26 = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
     seq = "ABCABCABAB"
-    sc = build_cluster(np14, n=3 * len(seq), gap=8.0, lattice=seq)
-    oleic_fill = _fill_around(sc, oleic, n=70)
+    sc = build_cluster(np26, n=len(seq), gap=6.0, lattice=seq)
+    oleic_fill = _fill_around(sc, oleic, n=500, margin=4.0)
     cases.append(dict(
         title="Faulted nanoparticle supercrystal",
-        prompt=f"a {seq}-stacked supercrystal of magnetite nanoparticles, "
-               "filled with oleic acid",
+        prompt=f"a {seq}-stacked supercrystal of 2.6 nm magnetite "
+               "nanoparticles, filled with oleic acid",
         caption="Close-packed layers with an explicit stacking sequence — an "
                 "fcc supercrystal carrying a stacking fault; Moltemplate "
                 "instantiates the particle per site, oleic acid fills the "
@@ -147,7 +154,7 @@ def build_showcases() -> list[dict]:
 
     mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
     rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=9)
-    hs = assemble.sandwich(mag, water, top=rut)
+    hs = assemble.sandwich(mag, water, top=rut, clearance=3.5)
     cases.append(dict(
         title="Hetero-interface sandwich",
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
@@ -165,6 +172,72 @@ def sphere_radii(cases) -> dict:
             if a is not None:
                 els |= set(a.get_chemical_symbols())
     return {el: sphere_radius(el) for el in sorted(els)}
+
+
+def _hex_svg(coords, values, labels, ramp, title) -> str:
+    """Pointy-top hexagonal heat map (single-hue sequential ramp)."""
+    def lerp(c0, c1, t):
+        return "#" + "".join(f"{round(int(c0[i:i+2],16)*(1-t)+int(c1[i:i+2],16)*t):02x}"
+                             for i in (1, 3, 5))
+    vmin, vmax = min(values), max(values)
+    S, r = 34, 19
+    w = max(x for x, _ in coords) * S + 2 * S
+    h = max(y for _, y in coords) * S + 2 * S
+    hexpts = ",".join(f"{r*np.sin(np.radians(a)):.1f} {-r*np.cos(np.radians(a)):.1f}"
+                      for a in range(0, 360, 60))
+    cells = []
+    for (x, y), v, lab in zip(coords, values, labels):
+        t = 0.0 if vmax == vmin else (v - vmin) / (vmax - vmin)
+        cx, cy = x * S + S, y * S + S
+        cells.append(f'<g transform="translate({cx:.1f},{cy:.1f})">'
+                     f'<polygon points="{hexpts}" fill="{lerp(*ramp, t)}" '
+                     f'stroke="{BG}" stroke-width="2"/>'
+                     + (f'<text y="4" text-anchor="middle" font-size="11" '
+                        f'fill="{TEXT}">{lab}</text>' if lab else "") + "</g>")
+    return (f'<figure class="som"><svg viewBox="0 0 {w:.0f} {h:.0f}" '
+            f'role="img" aria-label="{title}">{"".join(cells)}</svg>'
+            f'<figcaption>{title} <span class="rlab">{vmin:.2f}</span>'
+            f'<span class="ramp" style="background:linear-gradient(90deg,'
+            f'{ramp[0]},{ramp[1]})"></span><span class="rlab">{vmax:.2f}</span>'
+            f'</figcaption></figure>')
+
+
+def som_section() -> str:
+    path = ROOT / "data/out/eval/som.json"
+    if not path.exists():
+        return ""
+    s = json.loads(path.read_text())
+    coords = s["coords"]
+    um = _hex_svg(coords, s["umatrix"], [""] * len(coords),
+                  ("#e3ecf7", "#1d3f66"),
+                  "U-matrix (mean neighbor distance)")
+    hits = [c["hits"] for c in s["cells"]]
+    hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
+                  ("#f7ece1", "#8a4a24"), "BMU hit map (prompts per neuron)")
+    return f"""
+  <h3>Prompt-space analysis (SOM)</h3>
+  <p class="doc">Following the methodology of GENIUS
+  (<a href="https://arxiv.org/abs/2512.06404">arXiv:2512.06404</a>), the
+  evaluation prompts were embedded with OpenAI
+  <code>text-embedding-3-large</code> (3072-dimensional, unit-normalized) and
+  a 10&times;10 hexagonally packed self-organizing map was trained for 50,000
+  mini-batch iterations with a Gaussian neighborhood and linearly decreasing
+  learning rate. Map quality: Quantization Error <b>{s['qe']}</b>,
+  Topological Error <b>{s['te']}</b> (low TE indicates the embedding
+  neighborhoods are faithfully preserved on the grid). The U-matrix shows the
+  semantic cluster structure of the prompt set; the hit map shows how the
+  prompts distribute across the map — occupied clusters with empty boundary
+  neurons indicate distinct task families with healthy diversity.</p>
+  <div class="somrow">{um}{hm}</div>
+  <style>
+    .somrow {{ display:flex; gap:22px; flex-wrap:wrap; }}
+    .som {{ margin:0; flex:1; min-width:320px; max-width:460px; }}
+    .som svg {{ width:100%; height:auto; }}
+    .som figcaption {{ font-size:12.5px; opacity:.8; margin-top:4px;
+                       display:flex; align-items:center; gap:6px; }}
+    .ramp {{ display:inline-block; width:90px; height:10px; border-radius:3px; }}
+    .rlab {{ font-size:11px; opacity:.7; }}
+  </style>"""
 
 
 def metrics_section() -> str:
@@ -221,7 +294,8 @@ def main() -> None:
           <div class="cardtitle">{c['title']}</div>
           <div class="prompt">&ldquo;{c['prompt']}&rdquo;</div>
         </div>
-        <div class="viewer" id="v{i}"></div>
+        <div class="vwrap"><div class="viewer" id="v{i}"></div>
+          <canvas class="gizmo" id="g{i}" width="80" height="80"></canvas></div>
         <div class="caption">{c['caption']} <span class="n">{natoms} atoms.</span></div>
       </div>""")
 
@@ -252,7 +326,9 @@ def main() -> None:
   .prompt {{ font-size:12.5px; margin-top:3px; font-family:ui-monospace,monospace;
              background:{BG}; border:1px solid {CELLC}55; border-radius:6px;
              padding:4px 8px; display:inline-block; }}
+  .vwrap {{ position:relative; }}
   .viewer {{ width:100%; height:380px; position:relative; }}
+  .gizmo {{ position:absolute; left:0; bottom:0; pointer-events:none; }}
   .caption {{ padding:8px 14px 12px; font-size:12.5px; opacity:.8; }}
   .n {{ opacity:.7; }}
   code {{ background:#f5f0e8; padding:1px 5px; border-radius:4px; }}
@@ -269,7 +345,7 @@ def main() -> None:
   <p class="doc">Natural-language requests are converted into validated,
   atom-resolved 3D structures: nanoparticles, surfaces, interfaces, confined
   liquids, and nanoparticle superlattices. The deliverable of every build is
-  the geometry itself — an interactive view and an <code>.xyz</code> file
+  the geometry itself, an interactive view and an <code>.xyz</code> file
   carrying the full simulation cell. Structures are geometric: crystal
   truncations are not reconstructed and assemblies are not equilibrated.</p>
 
@@ -279,10 +355,14 @@ def main() -> None:
       (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
       nanotube) and relations (<i>inside, around, coated_by, on, between</i>).</li>
     <li><b>Retrieve</b> — real function signatures and constraints are pulled
-      from two knowledge graphs: an ASE knowledge graph introspected from the
-      installed package (2,392 entries) and a Moltemplate knowledge graph
-      extracted from the official manual. No code is generated without this
-      evidence.</li>
+      from two knowledge graphs. The ASE knowledge graph is introspected from
+      the installed package: 2,392 nodes (one per function or class, carrying
+      its real signature) with connectivity edges linking each callable to
+      its parent module. The Moltemplate knowledge graph is built once from
+      the official manual, and only the graph is queried at runtime: 60 nodes
+      (the .lt constructs) with 23 connectivity edges (which constructs
+      contain or apply to which) plus 8 constraint rules. No code is
+      generated without this evidence.</li>
     <li><b>Clarify</b> — only genuinely missing parameters are asked;
       everything else takes registry defaults.</li>
     <li><b>Propose</b> — a build snippet is written per constituent with the
@@ -311,10 +391,44 @@ def main() -> None:
   Sphere radii are proportional to van der Waals radii.</p>
   <div class="grid">{''.join(cards)}</div>
   {metrics_section()}
+  {som_section()}
 </main>
 <script>
   const DATA = {json.dumps(data)};
   const RADII = {json.dumps(radii)};
+  const AXES = [["[100]", [1,0,0]], ["[010]", [0,1,0]], ["[001]", [0,0,1]]];
+  function rotv(q, v) {{
+    const [x, y, z, w] = q;
+    const tx = 2*(y*v[2]-z*v[1]), ty = 2*(z*v[0]-x*v[2]), tz = 2*(x*v[1]-y*v[0]);
+    return [v[0]+w*tx+(y*tz-z*ty), v[1]+w*ty+(z*tx-x*tz), v[2]+w*tz+(x*ty-y*tx)];
+  }}
+  function drawGizmo(canvas, q) {{
+    const ctx = canvas.getContext("2d");
+    const c = 40, L = 19, AH = 5;
+    ctx.clearRect(0, 0, 80, 80);
+    const proj = AXES.map(([lab, v]) => [lab, rotv(q, v)])
+                     .sort((p, r) => p[1][2] - r[1][2]);
+    for (const [lab, r] of proj) {{
+      const x = c + L*r[0], y = c - L*r[1];
+      const len2d = Math.hypot(x - c, y - c);
+      ctx.strokeStyle = "{TEXT}"; ctx.fillStyle = "{TEXT}";
+      ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.globalAlpha = 0.45 + 0.55 * (r[2] + 1) / 2;
+      if (len2d < 4) {{ ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }}
+      else {{
+        const ux = (x - c) / len2d, uy = (y - c) / len2d;
+        ctx.beginPath(); ctx.moveTo(c, c); ctx.lineTo(x, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + AH*ux, y + AH*uy);
+        ctx.lineTo(x - AH*uy*0.6, y + AH*ux*0.6);
+        ctx.lineTo(x + AH*uy*0.6, y - AH*ux*0.6);
+        ctx.closePath(); ctx.fill();
+      }}
+      ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(lab, c + (L+13)*r[0], c - (L+13)*r[1] + 3);
+    }}
+    ctx.globalAlpha = 1;
+  }}
   function makeViewer(id, d) {{
     const v = $3Dmol.createViewer(id, {{backgroundColor: "{BG}", orthographic: true}});
     v.addModel(d.solid, "xyz");
@@ -330,6 +444,12 @@ def main() -> None:
     for (const e of d.edges) v.addLine({{start: {{x: e[0][0], y: e[0][1], z: e[0][2]}},
       end: {{x: e[1][0], y: e[1][1], z: e[1][2]}}, color: "{CELLC}"}});
     v.zoomTo(); v.zoom(1.1); v.render();
+    const canvas = document.getElementById("g" + id.slice(1));
+    if (canvas) {{
+      const update = view => drawGizmo(canvas, view.slice(4, 8));
+      v.setViewChangeCallback(update);
+      update(v.getView());
+    }}
   }}
   const PENDING = Object.keys(DATA).map((k, i) => ["v" + i, k]);
   const obs = new IntersectionObserver(es => {{

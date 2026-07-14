@@ -357,10 +357,12 @@ simulation cell.
    nanotube) and the relations between them (*inside, around, coated_by,
    on, between*).
 2. **Retrieve** — real function signatures and constraints are pulled
-   from two knowledge graphs: an ASE knowledge graph introspected from
-   the installed package and a Moltemplate knowledge graph extracted
-   from the official manual. Generation never runs without this
-   evidence.
+   from two knowledge graphs. ASE: 2,392 nodes (one per function or
+   class, with its real signature) and connectivity edges to their
+   parent modules, introspected from the installed package.
+   Moltemplate: 60 nodes (the .lt constructs) with 23 connectivity
+   edges and 8 constraint rules, built once from the official manual.
+   Generation never runs without this evidence.
 3. **Clarify** — only parameters that are genuinely missing are asked
    for; everything else takes registry defaults.
 4. **Propose** — a build snippet is written per constituent with the
