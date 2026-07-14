@@ -289,7 +289,7 @@ def coat(core: Atoms, molecule: Atoms, n: int | None = None,
 
 def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
              gap: float | None = None, top: Atoms | None = None,
-             clearance: float = 1.5, tolerance: float = 2.0,
+             clearance: float = 3.5, tolerance: float = 2.0,
              workdir: str | Path = "data/work/between",
              timeout: int = 300) -> Atoms:
     """Confine a liquid film of `molecule` BETWEEN two slabs.

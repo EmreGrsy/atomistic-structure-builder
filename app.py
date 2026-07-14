@@ -333,9 +333,13 @@ with st.sidebar:
                    use_container_width=True)
 
 if not SS.messages:
-    st.info('Tell me what to build, e.g. *"a carbon nanotube with methanol inside"* or '
-            '*"a 4 nm magnetite nanoparticle in water"*. You immediately get the '
-            "suggested build code for every constituent, with the parameters explained.")
+    st.markdown(
+        '<div style="background:#222834; border:1px solid #39435a; '
+        'border-radius:10px; padding:14px 18px; font-size:15px;">'
+        'Tell me what to build, e.g. <i>"a carbon nanotube with methanol '
+        'inside"</i> or <i>"a 4 nm magnetite nanoparticle in water"</i>. '
+        'You immediately get the suggested build code for every constituent, '
+        'with the parameters explained.</div>', unsafe_allow_html=True)
 
 def display_name(key: str, atoms) -> str:
     """Slabs carry orientation + supercell, e.g. magnetite_slab (001) 3×3."""

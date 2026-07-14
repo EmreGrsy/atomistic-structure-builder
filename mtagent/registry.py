@@ -161,8 +161,8 @@ def _t_nanoparticle(spec: dict) -> str:
         else:      # Wulff: facet set + relative surface energies spelled out
             facets = {}
             for hkl, key, default in ((("(1, 1, 1)"), "gamma_111", 1.0),
-                                      (("(1, 0, 0)"), "gamma_100", 1.4),
-                                      (("(1, 1, 0)"), "gamma_110", 1.6)):
+                                      (("(1, 0, 0)"), "gamma_100", 1.0),
+                                      (("(1, 1, 0)"), "gamma_110", 1.0)):
                 v = spec.get(key)
                 if isinstance(v, str) and v.strip().lower() in (
                         "none", "off", "no", "remove", "exclude"):
@@ -200,7 +200,7 @@ def _t_nanoparticle(spec: dict) -> str:
                       f'atoms = build_element_sphere("{el}", diameter={d:g})']
     n = int(spec.get("n_particles") or 1)
     if n > 1:
-        gap = _num(spec.get("gap"), 10.0)
+        gap = _num(spec.get("gap"), 6.0)
         lat = str(spec.get("lattice") or "sc").lower()
         lat_arg = f', lattice="{lat}"' if lat != "sc" else ""
         lines += ["from mtagent.cluster import build_cluster",
@@ -333,17 +333,19 @@ BUILDERS: dict[str, Builder] = {b.name: b for b in (
                help="relative surface energy of the {111} facet (normalized to 1; "
                     "lower = larger facet in the Wulff shape; 'none' removes the "
                     "facet from the shape entirely)"),
-         Param("gamma_100", "float", default=1.4, when=_is_wulff,
-               help="relative surface energy of the {100} facet (literature ordering "
-                    "{111} < {100} < {110} for magnetite; 'none' removes the facet)"),
-         Param("gamma_110", "float", default=1.6, when=_is_wulff,
+         Param("gamma_100", "float", default=1.0, when=_is_wulff,
+               help="relative surface energy of the {100} facet (default 1.0: balanced "
+                    "energies give a near spherical habit; magnetite literature "
+                    "ordering is {111} < {100} < {110}; 'none' removes the facet)"),
+         Param("gamma_110", "float", default=1.0, when=_is_wulff,
                help="relative surface energy of the {110} facet ('none' or 0 removes "
-                    "the facet — e.g. for a {111}+{100}-only cuboctahedral particle)"),
+                    "the facet, e.g. for a {111} plus {100} only cuboctahedral particle)"),
          Param("n_particles", "int", required=True, default=1,
                ask="A single nanoparticle, or a cluster — how many? (default 1)",
                help="1 = single particle; >1 = deterministic cluster assembled via Moltemplate (compact lattice, spacing = diameter + gap)"),
-         Param("gap", "float", default=10.0,
-               help="surface-to-surface spacing between cluster particles, Å"),
+         Param("gap", "float", default=6.0,
+               help="surface to surface spacing between cluster particles, Å "
+                    "(default 6, the documentation supercrystal spacing)"),
          Param("lattice", "str", default="sc",
                help="superlattice packing of a multi-particle supercrystal: "
                     "sc (simple cubic), fcc, bcc, or an explicit close-packed "

@@ -130,7 +130,7 @@ _TEMPLATE = Template("""<!DOCTYPE html>
         const len2d = Math.hypot(x - c, y - c);
         ctx.strokeStyle = "$text"; ctx.fillStyle = "$text";
         ctx.lineWidth = 2; ctx.lineCap = "round";
-        ctx.globalAlpha = 0.45 + 0.55 * (r[2] + 1) / 2;      // depth cue
+        ctx.globalAlpha = 0.5 * (0.45 + 0.55 * (r[2] + 1) / 2);  // faint, depth cued
         if (len2d < 4) {                                     // points at the viewer
           ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
         } else {
