@@ -50,7 +50,11 @@ st.markdown("""<style>
 [data-testid="stExpander"] * {
     -webkit-user-select: text !important; user-select: text !important; }
 </style>""", unsafe_allow_html=True)
-st.title("Moltemplate Agent")
+APP_NAME = "Atomic Builder Agent"
+APP_VERSION = "0.1.0"
+
+st.title(APP_NAME)
+st.caption("A knowledge-graph-grounded molecular structure builder")
 st.caption("KG-grounded structure builder — the code you see is the code that runs. "
            "Geometry only (MD equilibration is a later pipeline stage).")
 
@@ -327,11 +331,71 @@ def build_all() -> None:
 
 # ----------------------------------- UI ---------------------------------------
 
+_EXAMPLES = (
+    ("Solvated nanoparticle", "a 4 nm magnetite nanoparticle in water"),
+    ("Confined liquid", "20 ethanol molecules inside a (10,10) carbon nanotube"),
+    ("Solid–liquid interface", "water on a rutile TiO2 (110) surface"),
+    ("2D confinement", "100 water molecules between two graphene sheets"),
+    ("Nanoparticle supercrystal", "an FCC supercrystal of 4 magnetite nanoparticles"),
+    ("Hetero-sandwich", "water between a magnetite 001 slab and a rutile 110 slab"),
+)
+
 with st.sidebar:
-    st.subheader("Registry (single source of truth)")
-    for b in BUILDERS.values():
-        st.markdown(f"**{b.name}** — {b.description}")
-    st.markdown("**relations**: " + ", ".join(RELATIONS))
+    st.markdown(f"**{APP_NAME}** · v{APP_VERSION}")
+    st.caption("Knowledge-graph-grounded molecular structure builder")
+
+    with st.expander("Documentation", expanded=False):
+        st.markdown("""
+**Overview.** Natural-language requests are converted into validated,
+atom-resolved 3D structures. The output of every build is the geometry
+itself: an interactive viewer and an `.xyz` download carrying the full
+simulation cell.
+
+**Pipeline.**
+1. **Parse** — the request is decomposed into typed constituents
+   (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
+   nanotube) and the relations between them (*inside, around, coated_by,
+   on, between*).
+2. **Retrieve** — real function signatures and constraints are pulled
+   from two knowledge graphs: one introspected from the installed ASE,
+   one extracted from the Moltemplate manual. Generation never runs
+   without this evidence.
+3. **Clarify** — only parameters that are genuinely missing are asked
+   for; everything else takes registry defaults.
+4. **Propose** — a build snippet is written per constituent with the
+   retrieved evidence in-prompt. The snippet shown is the code executed.
+5. **Validate & build** — three gates: static validation against the
+   knowledge graphs; sandboxed execution; geometric verification
+   (finite coordinates, no unphysical contacts).
+6. **Assemble** — constituents are combined per the stated relations:
+   packmol for liquids (solvation, films, fills), Moltemplate for
+   repeated units (ligand shells, nanoparticle superlattices).
+
+**Toolchain.** ASE builds the unit · packmol packs liquids ·
+Moltemplate assembles repeated structures · PubChem supplies molecular
+coordinates · OpenAI parses language · 3Dmol.js renders.
+
+**Materials.** Any element (conventional cells; fcc/bcc/hcp/diamond),
+16 compounds (magnetite, rutile & anatase TiO2, quartz, ZnO, GaAs, GaN,
+Al2O3, Fe2O3, MgO, NiO, CeO2, SrTiO3, NaCl, FeS2, MoS2) and 2D sheets
+(graphene, h-BN). Any Miller termination incl. 4-index hexagonal
+notation; NxM supercells; hetero-interfaces with automatic lattice
+matching (strain recorded, 12% cap).
+
+**Scope.** Structures are geometric: crystal truncations are not
+reconstructed and assemblies are not equilibrated.
+""")
+
+    st.markdown("**Examples**")
+    for label, q in _EXAMPLES:
+        if st.button(label, key=f"ex_{label}", help=q, use_container_width=True):
+            SS["queued_prompt"] = q
+
+    with st.expander("Registry (single source of truth)"):
+        for b in BUILDERS.values():
+            st.markdown(f"**{b.name}** — {b.description}")
+        st.markdown("**relations**: " + ", ".join(RELATIONS))
+
     st.divider()
     st.markdown(("OpenAI: parse + propose" if have_openai_key()
                  else "no OpenAI key — keyword parse + canonical snippets"))
@@ -468,7 +532,10 @@ def parse_fresh(prompt: str, sb) -> None:
     sb.write("done — suggestion posted below.")
 
 
-if prompt := st.chat_input("Describe the structure, adjust parameters, or say 'build'…"):
+prompt = st.chat_input("Describe the structure, adjust parameters, or say 'build'…")
+if not prompt:
+    prompt = SS.pop("queued_prompt", None)       # sidebar example click
+if prompt:
     SS.messages.append({"role": "user", "content": prompt})
     try:
         if SS.spec is None or not SS.spec["constituents"] or wants_reset(prompt):
