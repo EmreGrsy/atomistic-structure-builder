@@ -281,38 +281,23 @@ def som_section() -> str:
   <h3>Prompt-space analysis (SOM)</h3>
   <p class="doc">To understand the diversity of the prompt set, the 100
   prompts were converted into 3072-dimensional embedding vectors with OpenAI's
-  <code>text-embedding-3-large</code> model and a 10&times;10 self-organizing
-  map (SOM) was trained to visualize their semantic landscape, following the
-  methodology of GENIUS
+  <code>text-embedding-3-large</code> model and a 10&times;10 hexagonally
+  packed self-organizing map (SOM;
+  <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
+  <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) was trained on
+  them, following the methodology of GENIUS
   (<a href="https://arxiv.org/abs/2512.06404">arXiv:2512.06404</a>). The SOM
-  (<a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
-  <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) is an
-  unsupervised neural network for dimensionality reduction and clustering:
-  it projects high-dimensional input data onto a two-dimensional grid while
-  preserving the topological relationships between the inputs. Each of the
-  100 neurons is initialized with a random weight vector of equal
-  dimensionality; during training the neurons compete to represent each
-  input. The best matching unit (BMU), the neuron whose weight vector has
-  the smallest Euclidean distance to the input, is updated together with its
-  grid neighbors, the adjustment decreasing with distance from the BMU
-  according to a Gaussian neighborhood function; combined with a linearly
-  decreasing learning rate, this lets the map form a topologically ordered
-  representation of the input space. Convergence and quality are validated
-  with the standard SOM metrics: the Quantization Error, the average
-  distance between the input vectors and their best matching unit's weight
-  vector, is <b>{s['qe']}</b>, which indicates good representational
-  fidelity given that the unit-normalized inputs have a maximum possible
-  pairwise distance of 2.0; the Topological Error, the proportion of inputs
-  whose first and second BMUs are not adjacent on the grid, is
-  <b>{s['te']}</b>, confirming excellent preservation of the original
-  neighborhood structure. The U-matrix visualizes the average distance
-  between neighboring neurons: higher values indicate cluster boundaries,
-  lower values dense regions of semantically similar prompts; the hexagonal
-  packing gives each neuron six equidistant neighbors instead of the four of
-  a square grid. The hit map (BMU activation count) shows how frequently
-  each neuron is selected, revealing the distribution of prompts across the
-  grid; neurons with zero activations serve as boundary regions and are
-  crucial for topology preservation.</p>
+  is an unsupervised neural network that projects high-dimensional data onto
+  a two-dimensional grid while preserving the topology of the input space;
+  training used 50,000 mini-batch iterations with a Gaussian neighborhood
+  and a linearly decreasing learning rate. Quantization Error is
+  <b>{s['qe']}</b>, good representational fidelity given that the
+  unit-normalized inputs have a maximum possible pairwise distance of 2.0;
+  Topological Error is <b>{s['te']}</b>, confirming the neighborhood
+  structure is preserved. In the U-matrix, high values mark cluster
+  boundaries and low values dense groups of similar prompts; the hit map
+  counts BMU activations per neuron, and empty neurons act as boundary
+  regions between clusters.</p>
   <div class="somrow">{um}{hm}</div>
   <style>
     .somrow {{ display:flex; gap:22px; flex-wrap:wrap; }}
@@ -331,8 +316,8 @@ def metrics_section() -> str:
         return ""
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
-    # single-hue horizontal bars: magnitude only (muted sage, 4.0:1 on surface)
-    bar, track, ink = "#4a7d5f", "rgba(90,76,64,.12)", TEXT
+    # single-hue horizontal bars sampled from the U-matrix ramp (4.0:1)
+    bar, track, ink = "#597868", "rgba(90,76,64,.12)", TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
@@ -349,9 +334,9 @@ def metrics_section() -> str:
             f" A score-based metric evaluation shows that the prompts comprise "
             f"{cp['basic']}% basic, {cp['standard']}% standard, and "
             f"{cp['complex']}% complex requests. This evaluation is performed "
-            "by a language model, which assigns a categorical value to each "
-            "prompt from the number of constituents, relations, and explicit "
-            "parameters it carries.")
+            "with OpenAI's <code>gpt-4o-mini</code> model, which assigns a "
+            "categorical value to each prompt from the number of "
+            "constituents, relations, and explicit parameters it carries.")
     return f"""
   <h2>Benchmark</h2>
   <p class="doc">To probe the framework's coverage and robustness, a set of
@@ -482,7 +467,8 @@ def main() -> None:
   <h2>Toolchain</h2>
   <p class="doc">ASE builds the unit. Packmol packs liquids. Moltemplate
   assembles repeated structures. PubChem supplies molecular coordinates.
-  An LLM parses language and drafts snippets. 3Dmol.js renders.
+  OpenAI's <code>gpt-4o-mini</code> parses language and drafts the build
+  snippets. 3Dmol.js renders.
   Supported: any element (conventional cells), 16 compound crystals,
   2D sheets (graphene, h-BN), any Miller termination including 4-index
   hexagonal notation, N&times;M supercells, and hetero-interfaces with
