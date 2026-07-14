@@ -39,7 +39,7 @@ st.markdown("""<style>
 .stChatMessage { gap: 0.25rem; }
 .stChatMessage:has([data-testid="stChatMessageAvatarUser"]),
 .stChatMessage:has([data-testid="chatAvatarIcon-user"]) {
-    background: rgba(128, 128, 128, 0.13);   /* readable in light AND dark theme */
+    background: rgba(159, 180, 208, 0.12);   /* slate tint, scheme 9 */
     border-radius: 14px; padding: 10px 14px; }
 /* don't dim/fade content while the script reruns */
 [data-stale="true"] { opacity: 1 !important; pointer-events: auto !important; }

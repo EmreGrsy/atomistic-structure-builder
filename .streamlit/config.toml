@@ -1,4 +1,12 @@
-# Atomistic Structure Builder
+# Atomistic Structure Builder, Slate Blue and Silver theme
+[theme]
+base = "dark"
+backgroundColor = "#151a22"
+secondaryBackgroundColor = "#222834"
+textColor = "#e9edf4"
+primaryColor = "#9fb4d0"
+font = "sans serif"
+
 [server]
 # serves ./static so the documentation pages are reachable from the app
 enableStaticServing = true

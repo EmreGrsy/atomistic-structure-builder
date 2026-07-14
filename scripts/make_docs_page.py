@@ -23,7 +23,7 @@ APP_VERSION = "0.1.0"
 # viewer style stays warm (see mtagent/viewer.py); the PAGE itself follows
 # the app's default Streamlit palette
 BG, TEXT, CELLC, OUTLINE = "#e9eaec", "#3d4148", "#8f939b", 0.10
-PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#0e1117", "#fafafa", "#3d414b", "#262730"
+PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#151a22", "#e9edf4", "#39435a", "#222834"
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
 # element color overrides (user's publication convention); others use Jmol
 CUSTOM_COLORS = {"Fe": "#3565c0"}
@@ -274,11 +274,11 @@ def som_section() -> str:
     s = json.loads(path.read_text())
     coords = s["coords"]
     um = _hex_svg(coords, s["umatrix"], [""] * len(coords),
-                  ("#e4efe7", "#1e4531"),
+                  ("#e3e9f4", "#33445f"),
                   "U matrix (mean neighbor distance)")
     hits = [c["hits"] for c in s["cells"]]
     hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
-                  ("#f7ece1", "#8a4a24"), "BMU hit map (prompts per neuron)")
+                  ("#efe8d8", "#8a6d3b"), "BMU hit map (prompts per neuron)")
     return f"""
   <h3>Prompt space analysis (SOM)</h3>
   <p class="doc">To understand the diversity of the prompt set, the 100
@@ -319,7 +319,7 @@ def metrics_section() -> str:
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
     # single-hue horizontal bars sampled from the U matrix ramp (4.0:1)
-    bar, track, ink = "#6d8f7d", "rgba(250,250,250,.12)", PAGE_TEXT
+    bar, track, ink = "#7f97b8", "rgba(233,237,244,.12)", PAGE_TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
