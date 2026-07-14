@@ -373,16 +373,30 @@ def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
             "current packing limit (~10,000). Use a smaller slab supercell or "
             "an explicit smaller count.")
 
-    z0, z1 = hi[2] + clearance, hi[2] + gap - top_margin
+    # position the top slab FIRST and include it in the packmol run as a
+    # second fixed wall — corrugated surfaces (protruding atom rows) make a
+    # purely geometric box margin insufficient on the top side
+    top_slab = (top if top is not None else slab).copy()
+    tp = top_slab.get_positions()
+    top_thickness = float(tp[:, 2].max() - tp[:, 2].min())
+    top_vacuum = max(float(top_slab.cell.lengths()[2]) - tp[:, 2].max(),
+                     clearance)
+    top_slab.translate([0.0, 0.0, (hi[2] + gap) - tp[:, 2].min()])
+
+    z0, z1 = hi[2] + clearance, hi[2] + gap - clearance
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
-    slab_xyz, mol_xyz, out_xyz = work / "slab.xyz", work / "mol.xyz", work / "film.xyz"
+    slab_xyz, top_xyz, mol_xyz, out_xyz = (work / "slab.xyz", work / "top.xyz",
+                                           work / "mol.xyz", work / "film.xyz")
     write(str(slab_xyz), slab, format="xyz")
+    write(str(top_xyz), top_slab, format="xyz")
     write(str(mol_xyz), _centered(molecule), format="xyz")
     inp = work / "between.inp"
     inp.write_text(
         f"tolerance {tolerance}\nfiletype xyz\noutput {out_xyz.name}\n\n"
         f"structure {slab_xyz.name}\n  number 1\n"
+        "  fixed 0. 0. 0. 0. 0. 0.\nend structure\n\n"
+        f"structure {top_xyz.name}\n  number 1\n"
         "  fixed 0. 0. 0. 0. 0. 0.\nend structure\n\n"
         f"structure {mol_xyz.name}\n  number {n}\n"
         f"  inside box {lo[0] + 0.5:.3f} {lo[1] + 0.5:.3f} {z0:.3f} "
@@ -392,14 +406,7 @@ def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
     if not out_xyz.exists() or "Success" not in proc.stdout:
         raise RuntimeError(f"packmol sandwich fill failed:\n{proc.stdout[-1200:]}")
 
-    filled = read(str(out_xyz))                    # bottom slab + film
-    top_slab = (top if top is not None else slab).copy()
-    tp = top_slab.get_positions()
-    top_thickness = float(tp[:, 2].max() - tp[:, 2].min())
-    top_vacuum = max(float(top_slab.cell.lengths()[2]) - tp[:, 2].max(),
-                     clearance)
-    top_slab.translate([0.0, 0.0, (hi[2] + gap) - tp[:, 2].min()])
-    combined = filled + top_slab
+    combined = read(str(out_xyz))                  # bottom + top + film
     cell = np.array(slab.cell)
     cell[2] = [0.0, 0.0, hi[2] + gap + top_thickness + top_vacuum]
     combined.set_cell(cell)

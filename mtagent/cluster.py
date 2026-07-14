@@ -52,6 +52,28 @@ def _lattice_basis(lattice: str, spacing: float) -> tuple[list, float]:
     raise ValueError(f"unknown superlattice {lattice!r} — sc, fcc or bcc")
 
 
+def stacking_positions(sequence: str, per_layer: int, spacing: float) -> np.ndarray:
+    """Close-packed layer stacking with an EXPLICIT sequence, e.g. 'ABCABCABAB'
+    — an fcc crystal with a stacking fault. Each layer is a compact 2D
+    hexagonal patch of `per_layer` particles (nearest-neighbor distance
+    `spacing`); A/B/C are the three close-packed layer registries; the
+    interlayer distance is spacing*sqrt(2/3)."""
+    seq = sequence.strip().upper()
+    if not seq or any(ch not in "ABC" for ch in seq):
+        raise ValueError(f"stacking sequence must use only A/B/C, got {sequence!r}")
+    a1 = np.array([1.0, 0.0]) * spacing
+    a2 = np.array([0.5, math.sqrt(3.0) / 2.0]) * spacing
+    registry = {"A": np.zeros(2), "B": (a1 + a2) / 3.0, "C": 2.0 * (a1 + a2) / 3.0}
+    # one compact hexagonal patch reused by every layer
+    grid = np.array([i * a1 + j * a2 for i in range(-3, 4) for j in range(-3, 4)])
+    order = np.argsort(np.linalg.norm(grid - grid.mean(axis=0), axis=1), kind="stable")
+    patch = grid[order[:per_layer]]
+    dz = spacing * math.sqrt(2.0 / 3.0)
+    sites = np.array([[*(xy + registry[ch]), k * dz]
+                      for k, ch in enumerate(seq) for xy in patch])
+    return sites - sites.mean(axis=0)
+
+
 def lattice_positions(n: int, spacing: float, lattice: str = "sc") -> np.ndarray:
     """N deterministic superlattice sites, most-compact first.
 
@@ -110,23 +132,34 @@ def build_cluster(unit: Atoms, n: int, gap: float = 10.0, name: str = "NP",
 
     dia = unit_diameter(unit)
     spacing = dia + gap
-    basis, a_lat = _lattice_basis(lattice, spacing)
-    k = round((n / len(basis)) ** (1.0 / 3.0))
-    periodic = k >= 1 and len(basis) * k ** 3 == n
-    if periodic:
-        # n fills complete conventional cells -> a TRUE periodic supercrystal:
-        # cell edge = k*a, so the structure tiles seamlessly under PBC (the
-        # boundary-image neighbor distance equals the in-crystal spacing)
-        sites = np.array([(np.array(b) + (i, j, m)) * a_lat
-                          for i in range(k) for j in range(k) for m in range(k)
-                          for b in basis])
-        cell_len = k * a_lat
-        box = np.column_stack([np.zeros(3), np.full(3, cell_len)])
-    else:
-        sites = lattice_positions(n, spacing, lattice)
+    lat = str(lattice or "sc")
+    stacking = len(lat) > 3 and all(c in "ABCabc" for c in lat)
+    if stacking:                       # explicit layer sequence (e.g. ABCABAB)
+        per_layer = max(1, round(n / len(lat)))
+        n = per_layer * len(lat)
+        sites = stacking_positions(lat, per_layer, spacing)
         lo = sites.min(axis=0) - dia / 2.0 - margin
-        hi = sites.max(axis=0) + dia / 2.0 + margin
-        box = np.column_stack([lo, hi])
+        hi_ = sites.max(axis=0) + dia / 2.0 + margin
+        box = np.column_stack([lo, hi_])
+        periodic = False
+    else:
+        basis, a_lat = _lattice_basis(lattice, spacing)
+        k = round((n / len(basis)) ** (1.0 / 3.0))
+        periodic = k >= 1 and len(basis) * k ** 3 == n
+        if periodic:
+            # n fills complete conventional cells -> a TRUE periodic
+            # supercrystal: cell edge = k*a, so the structure tiles seamlessly
+            # under PBC (boundary-image neighbor distance == in-crystal spacing)
+            sites = np.array([(np.array(b) + (i, j, m)) * a_lat
+                              for i in range(k) for j in range(k)
+                              for m in range(k) for b in basis])
+            cell_len = k * a_lat
+            box = np.column_stack([np.zeros(3), np.full(3, cell_len)])
+        else:
+            sites = lattice_positions(n, spacing, lattice)
+            lo = sites.min(axis=0) - dia / 2.0 - margin
+            hi = sites.max(axis=0) + dia / 2.0 + margin
+            box = np.column_stack([lo, hi])
 
     centered = unit.get_positions() - unit.get_positions().mean(axis=0)
 

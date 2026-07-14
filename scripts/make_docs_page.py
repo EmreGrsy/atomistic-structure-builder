@@ -47,6 +47,35 @@ def _edges(atoms_list):
             for i, j in pairs]
 
 
+def _fill_around(cluster, molecule, n: int, workdir="data/work/docs_fill"):
+    """Pack n molecules into the cluster's bounding box (cluster fixed) and
+    return ONLY the packed molecules (rendered as the translucent phase)."""
+    import subprocess
+    from ase.io import read, write
+    from mtagent.packing import find_packmol
+    work = Path(ROOT / workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    p = cluster.get_positions()
+    lo, hi = p.min(axis=0) + 1.0, p.max(axis=0) - 1.0
+    cl, mol, outx = work / "cluster.xyz", work / "mol.xyz", work / "filled.xyz"
+    write(str(cl), cluster, format="xyz")
+    m = molecule.copy()
+    m.set_positions(m.get_positions() - m.get_positions().mean(axis=0))
+    write(str(mol), m, format="xyz")
+    (work / "fill.inp").write_text(
+        f"tolerance 2.0\nfiletype xyz\noutput {outx.name}\n\n"
+        f"structure {cl.name}\n  number 1\n  fixed 0. 0. 0. 0. 0. 0.\n"
+        "end structure\n\n"
+        f"structure {mol.name}\n  number {n}\n"
+        f"  inside box {lo[0]:.2f} {lo[1]:.2f} {lo[2]:.2f} "
+        f"{hi[0]:.2f} {hi[1]:.2f} {hi[2]:.2f}\nend structure\n")
+    proc = subprocess.run([find_packmol()], stdin=(work / "fill.inp").open(),
+                          cwd=work, capture_output=True, text=True, timeout=300)
+    if not outx.exists() or "Success" not in proc.stdout:
+        raise RuntimeError(f"docs fill failed:\n{proc.stdout[-500:]}")
+    return read(str(outx))[len(cluster):]
+
+
 def build_showcases() -> list[dict]:
     from mtagent import assemble
     from mtagent.cluster import build_cluster
@@ -60,14 +89,18 @@ def build_showcases() -> list[dict]:
     ethanol = get_molecule("ethanol")
     cases = []
 
-    np_ = build_magnetite_wulff(diameter=26.0)
+    # equal facet energies -> all facet planes equidistant: the most
+    # sphere-like Wulff habit these families can produce
+    round_gamma = {(1, 1, 1): 1.0, (1, 0, 0): 1.0, (1, 1, 0): 1.0}
+    np_ = build_magnetite_wulff(diameter=26.0, gamma=round_gamma)
     solv = solvate(np_, build_solvent_box(water, box_size=40.0))
     n_np = solv.info["solvation"]["solute_atoms"]
     cases.append(dict(
         title="Solvated nanoparticle",
-        prompt="a 2.2 nm magnetite nanoparticle in water",
-        caption="Wulff-constructed Fe3O4 particle (literature facet energies), "
-                "carve-and-insert solvation; the solvent renders translucent.",
+        prompt="a 2.6 nm magnetite nanoparticle in water",
+        caption="Wulff-constructed Fe3O4 particle (balanced facet energies, "
+                "near-spherical habit), carve-and-insert solvation; the "
+                "solvent renders translucent.",
         solid=solv[:n_np], trans=solv[n_np:], cellsrc=solv))
 
     cnt = build_nanotube(10, 10, length=12)
@@ -75,16 +108,17 @@ def build_showcases() -> list[dict]:
     cases.append(dict(
         title="Confined liquid",
         prompt="12 ethanol molecules inside a (10,10) carbon nanotube",
-        caption="packmol cylinder fill; the enclosing tube wall renders "
+        caption="Packmol cylinder fill; the enclosing tube wall renders "
                 "translucent so the guest phase stays visible.",
         solid=filled[len(cnt):], trans=filled[:len(cnt)], cellsrc=filled))
 
-    tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=25.0, vacuum=14.0)
-    coated = assemble.coat(tio2, water, n=80)
+    oleic = get_molecule("oleic acid")
+    tio2 = build_rutile_slab((1, 1, 0), thickness=8.0, width=25.0, vacuum=20.0)
+    coated = assemble.coat(tio2, oleic, n=14)
     cases.append(dict(
         title="Solid–liquid interface",
-        prompt="water on a rutile TiO2 (110) surface",
-        caption="The slab's vacuum is filled at liquid density inside one "
+        prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
+        caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
         solid=coated, trans=None, cellsrc=coated))
 
@@ -97,14 +131,19 @@ def build_showcases() -> list[dict]:
                 "wall clearances; one periodic cell.",
         solid=gsand, trans=None, cellsrc=gsand))
 
-    np20 = build_magnetite_wulff(diameter=24.0)
-    sc = build_cluster(np20, n=4, gap=10.0, lattice="fcc")
+    np14 = build_magnetite_wulff(diameter=14.0, gamma=round_gamma)
+    seq = "ABCABCABAB"
+    sc = build_cluster(np14, n=3 * len(seq), gap=8.0, lattice=seq)
+    oleic_fill = _fill_around(sc, oleic, n=70)
     cases.append(dict(
-        title="Nanoparticle supercrystal",
-        prompt="an FCC supercrystal of 4 magnetite nanoparticles",
-        caption="ASE builds the particle once; Moltemplate instantiates it "
-                "on fcc superlattice sites (KG-validated .lt).",
-        solid=sc, trans=None, cellsrc=sc))
+        title="Faulted nanoparticle supercrystal",
+        prompt=f"a {seq}-stacked supercrystal of magnetite nanoparticles, "
+               "filled with oleic acid",
+        caption="Close-packed layers with an explicit stacking sequence — an "
+                "fcc supercrystal carrying a stacking fault; Moltemplate "
+                "instantiates the particle per site, oleic acid fills the "
+                "interstitial space (translucent).",
+        solid=sc, trans=oleic_fill, cellsrc=sc))
 
     mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
     rut = build_rutile_slab((1, 1, 0), thickness=8.0, vacuum=12.0, nx=4, ny=9)
@@ -222,7 +261,7 @@ def main() -> None:
 <body>
 <main>
   <h1>{APP_NAME}</h1>
-  <p class="tagline">A knowledge-graph-grounded atomistic structure builder —
+  <p class="tagline">A knowledge-graph-grounded atomistic structure builder,
   the code you see is the code that runs. Geometry only.</p>
   <p class="version">v{APP_VERSION}</p>
 
@@ -240,9 +279,10 @@ def main() -> None:
       (nanoparticle, surface slab, bulk crystal, molecule, solvent box,
       nanotube) and relations (<i>inside, around, coated_by, on, between</i>).</li>
     <li><b>Retrieve</b> — real function signatures and constraints are pulled
-      from two knowledge graphs: one introspected from the installed ASE
-      (2,392 entries), one extracted from the Moltemplate manual. No code is
-      generated without this evidence.</li>
+      from two knowledge graphs: an ASE knowledge graph introspected from the
+      installed package (2,392 entries) and a Moltemplate knowledge graph
+      extracted from the official manual. No code is generated without this
+      evidence.</li>
     <li><b>Clarify</b> — only genuinely missing parameters are asked;
       everything else takes registry defaults.</li>
     <li><b>Propose</b> — a build snippet is written per constituent with the
@@ -256,13 +296,13 @@ def main() -> None:
   </ol>
 
   <h2>Toolchain</h2>
-  <p class="doc">ASE builds the unit &middot; packmol packs liquids &middot;
-  Moltemplate assembles repeated structures &middot; PubChem supplies
-  molecular coordinates &middot; an LLM parses language and drafts snippets
-  &middot; 3Dmol.js renders. Any element (conventional cells), 16 compound
-  crystals, 2D sheets (graphene, h-BN), any Miller termination including
-  4-index hexagonal notation, N&times;M supercells, and hetero-interfaces
-  with automatic lattice matching.</p>
+  <p class="doc">ASE builds the unit. Packmol packs liquids. Moltemplate
+  assembles repeated structures. PubChem supplies molecular coordinates.
+  An LLM parses language and drafts snippets. 3Dmol.js renders.
+  Supported: any element (conventional cells), 16 compound crystals,
+  2D sheets (graphene, h-BN), any Miller termination including 4-index
+  hexagonal notation, N&times;M supercells, and hetero-interfaces with
+  automatic lattice matching.</p>
 
   <h2>Examples</h2>
   <p class="doc">Each example below is a real build produced by the prompt

@@ -346,7 +346,9 @@ BUILDERS: dict[str, Builder] = {b.name: b for b in (
                help="surface-to-surface spacing between cluster particles, Å"),
          Param("lattice", "str", default="sc",
                help="superlattice packing of a multi-particle supercrystal: "
-                    "sc (simple cubic), fcc, or bcc"),
+                    "sc (simple cubic), fcc, bcc, or an explicit close-packed "
+                    "stacking sequence like ABCABCABAB (fcc with a stacking "
+                    "fault); complete-cell counts get a periodic cell"),
          Param("element", "str",
                help="chemical symbol; derived from the material for metals (e.g. Au)")),
         _t_nanoparticle),

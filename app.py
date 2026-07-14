@@ -341,7 +341,7 @@ _EXAMPLES = (
 
 with st.sidebar:
     st.markdown(f"**{APP_NAME}** · v{APP_VERSION}")
-    st.caption("KG-grounded structure builder — the code you see is the code "
+    st.caption("KG-grounded structure builder, the code you see is the code "
                "that runs. Geometry only.")
 
     with st.expander("Documentation", expanded=False):
@@ -357,9 +357,10 @@ simulation cell.
    nanotube) and the relations between them (*inside, around, coated_by,
    on, between*).
 2. **Retrieve** — real function signatures and constraints are pulled
-   from two knowledge graphs: one introspected from the installed ASE,
-   one extracted from the Moltemplate manual. Generation never runs
-   without this evidence.
+   from two knowledge graphs: an ASE knowledge graph introspected from
+   the installed package and a Moltemplate knowledge graph extracted
+   from the official manual. Generation never runs without this
+   evidence.
 3. **Clarify** — only parameters that are genuinely missing are asked
    for; everything else takes registry defaults.
 4. **Propose** — a build snippet is written per constituent with the

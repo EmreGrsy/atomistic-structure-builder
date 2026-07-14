@@ -485,14 +485,18 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
                       r"(?:of|with|made of)\s+(\d+)\b", message, re.IGNORECASE)
     n = int(m.group(1)) if m else None
     lat = re.search(r"\b(fcc|bcc)\b", message, re.IGNORECASE)
+    stk = re.search(r"\b([ABC]{4,})\b", message)     # explicit stacking sequence
     multi = re.search(r"\bsupercrystal|superlattice|nanoparticle cluster"
                       r"|cluster of nanoparticles\b", message, re.IGNORECASE)
     for c in nps:
         if n and n >= 2:
             c["spec"]["n_particles"] = n
         elif multi and int(c["spec"].get("n_particles") or 1) < 2:
-            c["spec"]["n_particles"] = 4         # one fcc cell; user can edit
-        if lat and (multi or (n and n >= 2)):
+            # stacking sequences default to 3 particles per layer
+            c["spec"]["n_particles"] = 3 * len(stk.group(1)) if stk else 4
+        if stk and (multi or (n and n >= 2)):
+            c["spec"]["lattice"] = stk.group(1)
+        elif lat and (multi or (n and n >= 2)):
             c["spec"]["lattice"] = lat.group(1).lower()
     if multi or (n and n >= 2):
         # "supercrystal"/"cluster" describes the NP arrangement — the LLM
