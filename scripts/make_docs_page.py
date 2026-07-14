@@ -355,12 +355,19 @@ def metrics_section() -> str:
   <div class="bars" role="img" aria-label="success rate per category">
     {''.join(rows)}
   </div>
+  <p class="doc"><a class="promptlink" href="eval_prompts.html">View the
+  complete prompt set</a>, all 100 prompts with their category, complexity
+  label, and per prompt outcome.</p>
   <style>
     .brow {{ display:flex; align-items:center; gap:10px; margin:4px 0; }}
     .blab {{ width:170px; font-size:13px; color:{ink}; text-align:right; }}
     .btrack {{ flex:1; height:14px; background:{track}; border-radius:4px; }}
     .bfill {{ height:100%; background:{bar}; border-radius:4px; }}
     .bval {{ width:48px; font-size:12.5px; color:{ink}; opacity:.75; }}
+    .promptlink {{ display:inline-block; margin-top:6px; padding:7px 14px;
+      background:{bar}; color:#f5f0e8; border-radius:8px; font-weight:600;
+      text-decoration:none; }}
+    .promptlink:hover {{ filter:brightness(1.1); }}
   </style>"""
 
 
