@@ -310,8 +310,8 @@ def metrics_section() -> str:
         return ""
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
-    # single-hue horizontal bars: magnitude only (dark green, 6.2:1 on surface)
-    bar, track, ink = "#2d5f42", "rgba(90,76,64,.12)", TEXT
+    # single-hue horizontal bars: magnitude only (muted sage, 4.0:1 on surface)
+    bar, track, ink = "#4a7d5f", "rgba(90,76,64,.12)", TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
