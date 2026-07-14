@@ -356,8 +356,7 @@ def metrics_section() -> str:
     {''.join(rows)}
   </div>
   <p class="doc"><a class="promptlink" href="eval_prompts.html">View the
-  complete prompt set</a>, all 100 prompts with their category, complexity
-  label, and per prompt outcome.</p>
+  complete prompt set</a></p>
   <style>
     .brow {{ display:flex; align-items:center; gap:10px; margin:4px 0; }}
     .blab {{ width:170px; font-size:13px; color:{ink}; text-align:right; }}
