@@ -161,7 +161,8 @@ def build_showcases() -> list[dict]:
         caption="A single solvated ion at the tube center, water packed "
                 "around it (Packmol cylinder fill); the enclosing tube wall "
                 "renders translucent so the confined phase stays visible.",
-        solid=solid, trans=trans, cellsrc=trans))
+        solid=solid, trans=trans, cellsrc=trans,
+        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["tube axis", [0, 0, 1]]]))
 
     oleic = get_molecule("oleic acid")
 
@@ -176,7 +177,8 @@ def build_showcases() -> list[dict]:
         prompt="14 oleic acid molecules on a rutile TiO2 (110) surface",
         caption="Organic molecules packed above the surface inside one "
                 "periodic cell; interfaces render fully solid.",
-        solid=solid, trans=trans, cellsrc=solid))
+        solid=solid, trans=trans, cellsrc=solid,
+        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["[110]", [0, 0, 1]]]))
 
     def _graphene():
         sheet = build_sheet("graphene", width=24, vacuum=10)
@@ -189,7 +191,8 @@ def build_showcases() -> list[dict]:
         prompt="80 water molecules between two graphene sheets",
         caption="A water film packed between the sheets with symmetric "
                 "wall clearances; one periodic cell.",
-        solid=solid, trans=trans, cellsrc=solid))
+        solid=solid, trans=trans, cellsrc=solid,
+        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["[001]", [0, 0, 1]]]))
 
     seq = "ABCABCABAB"
 
@@ -209,7 +212,8 @@ def build_showcases() -> list[dict]:
                 "fcc supercrystal carrying a stacking fault; Moltemplate "
                 "instantiates the particle per site, oleic acid fills the "
                 "interstitial space (translucent).",
-        solid=solid, trans=trans, cellsrc=solid))
+        solid=solid, trans=trans, cellsrc=solid,
+        axes=[["", [1, 0, 0]], ["", [0, 1, 0]], ["stacking axis", [0, 0, 1]]]))
 
     def _hetero():
         mag = build_magnetite_slab((0, 0, 1), thickness=8.0, vacuum=12.0, nx=3, ny=3)
@@ -223,7 +227,8 @@ def build_showcases() -> list[dict]:
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
         caption="Supercells are lattice matched automatically; the top slab "
                 "is strained epitaxially (recorded, 12% cap).",
-        solid=solid, trans=trans, cellsrc=solid))
+        solid=solid, trans=trans, cellsrc=solid,
+        axes=[["[100]", [1, 0, 0]], ["[010]", [0, 1, 0]], ["[001]", [0, 0, 1]]]))
     return cases
 
 
@@ -375,6 +380,7 @@ def main() -> None:
             "solid": _xyz(c["solid"], c["title"]),
             "trans": _xyz(c["trans"], c["title"]) if c["trans"] is not None else None,
             "edges": _edges([c["cellsrc"]]),
+            "axes": c.get("axes"),
         }
         natoms = sum(len(p) for p in parts)
         cards.append(f"""
@@ -493,7 +499,7 @@ def main() -> None:
     const tx = 2*(y*v[2]-z*v[1]), ty = 2*(z*v[0]-x*v[2]), tz = 2*(x*v[1]-y*v[0]);
     return [v[0]+w*tx+(y*tz-z*ty), v[1]+w*ty+(z*tx-x*tz), v[2]+w*tz+(x*ty-y*tx)];
   }}
-  function drawGizmo(canvas, q) {{
+  function drawGizmo(canvas, q, AXES) {{
     const ctx = canvas.getContext("2d");
     const c = 40, L = 19, AH = 5;
     ctx.clearRect(0, 0, 80, 80);
@@ -557,7 +563,7 @@ def main() -> None:
     v.zoomTo(); v.zoom(1.1); v.render();
     const canvas = document.getElementById("g" + id.slice(1));
     if (canvas) {{
-      const update = view => drawGizmo(canvas, view.slice(4, 8));
+      const update = view => drawGizmo(canvas, view.slice(4, 8), d.axes || AXES);
       v.setViewChangeCallback(update);
       update(v.getView());
     }}
