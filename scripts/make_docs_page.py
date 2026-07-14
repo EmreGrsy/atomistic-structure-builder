@@ -23,7 +23,7 @@ APP_VERSION = "0.1.0"
 # viewer style stays warm (see mtagent/viewer.py); the PAGE itself follows
 # the app's default Streamlit palette
 BG, TEXT, CELLC, OUTLINE = "#efe9e1", "#5a4c40", "#a3927f", 0.10
-PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#ffffff", "#262730", "#d5d9e0", "#f0f2f6"
+PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#0e1117", "#fafafa", "#3d414b", "#262730"
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
 # element color overrides (user's publication convention); others use Jmol
 CUSTOM_COLORS = {"Fe": "#3565c0"}
@@ -319,7 +319,7 @@ def metrics_section() -> str:
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
     # single-hue horizontal bars sampled from the U matrix ramp (4.0:1)
-    bar, track, ink = "#597868", "rgba(38,39,48,.10)", PAGE_TEXT
+    bar, track, ink = "#6d8f7d", "rgba(250,250,250,.12)", PAGE_TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
