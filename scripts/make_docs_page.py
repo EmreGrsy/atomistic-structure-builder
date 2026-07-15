@@ -278,13 +278,13 @@ def som_section() -> str:
                   ("#e3e9f4", "#33445f"),
                   "U matrix (mean neighbor distance)")
     hits = [c["hits"] for c in s["cells"]]
-    occ, mx = sum(1 for h in hits if h), max(hits)
+    occ, mx, n_prompts = sum(1 for h in hits if h), max(hits), sum(hits)
     hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
                   ("#efe8d8", "#8a6d3b"), "BMU hit map (prompts per neuron)")
     return f"""
   <h3>Prompt space analysis (SOM)</h3>
   <p class="doc">The benchmark score above is only meaningful if the
-  {s['n']} prompts are {s['n']} genuinely different requests, not one
+  {n_prompts} prompts are {n_prompts} genuinely different requests, not one
   question asked a hundred times. This map is that check. Similar prompts
   land on the same spot and different prompts land far apart, so a
   repetitive prompt set would collapse into one or two big piles. Here the
@@ -294,7 +294,7 @@ def som_section() -> str:
   with empty space between the groups: broad variety between task families,
   coherence within them. The perfect score was earned on a hundred
   different tasks, not one easy task a hundred times.
-  Technically, the {s['n']} prompts were converted into 3072 dimensional
+  Technically, the {n_prompts} prompts were converted into 3072 dimensional
   embedding vectors with OpenAI's <code>text-embedding-3-large</code> model
   and a 10&times;10 hexagonally packed self organizing map (SOM;
   <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,

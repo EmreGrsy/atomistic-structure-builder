@@ -187,12 +187,17 @@
   </style>
   
   <h3>Prompt space analysis (SOM)</h3>
-  <p class="doc">A benchmark is only as strong as the variety of its prompts:
-  100 rephrasings of the same request would prove little. This section
-  checks that variety. Each prompt is placed on a map where similar prompts
-  land close together and different prompts land far apart; a benchmark of
-  near duplicates would collapse onto a few spots, while this set spreads
-  into distinct, well separated groups.
+  <p class="doc">The benchmark score above is only meaningful if the
+  100 prompts are 100 genuinely different requests, not one
+  question asked a hundred times. This map is that check. Similar prompts
+  land on the same spot and different prompts land far apart, so a
+  repetitive prompt set would collapse into one or two big piles. Here the
+  prompts spread over 54 of the 100 spots, no spot holds more
+  than 5, and the occupied spots group naturally by task, nanotube
+  requests together, nanoparticle requests together, surfaces elsewhere,
+  with empty space between the groups: broad variety between task families,
+  coherence within them. The perfect score was earned on a hundred
+  different tasks, not one easy task a hundred times.
   Technically, the 100 prompts were converted into 3072 dimensional
   embedding vectors with OpenAI's <code>text-embedding-3-large</code> model
   and a 10&times;10 hexagonally packed self organizing map (SOM;
