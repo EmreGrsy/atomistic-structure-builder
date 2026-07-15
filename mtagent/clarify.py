@@ -13,7 +13,7 @@ import json
 import re
 
 from .assemble import RELATIONS, relation_catalog
-from .ground import Gap
+from .ground import Gap, relations_of
 from .llm import DEFAULT_MODEL, chat_json, have_openai_key
 from .registry import BUILDERS, catalog, slug
 
@@ -306,6 +306,7 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     _apply_nparticles_hint(state, text)
     _strip_uninvited_repeat(state, text)
     _strip_uninvited_slab_dims(state, text)
+    _drop_uninvited_count(state, text)
     _bulk_vs_slab_hint(state, text)
     return state
 
@@ -420,6 +421,7 @@ def respond(state: dict, message: str, gap: Gap | None = None, context: str = ""
         _apply_add_count_hint(state, new_state, text)
         _strip_uninvited_repeat(new_state, text,
                                 keep=_slab_repeats_of(state))
+        _drop_uninvited_count(new_state, text, old_state=state)
     return {"intent": intent, "answer": str(out.get("answer") or ""),
             "state": new_state, "note": note}
 
@@ -542,6 +544,25 @@ def _slab_repeats_of(state: dict) -> dict:
             for c in state.get("constituents", [])
             if c.get("builder") in ("surface_slab", "nanoparticle")
             and c["spec"].get("repeat")}
+
+
+def _drop_uninvited_count(state: dict, text: str,
+                          old_state: dict | None = None) -> None:
+    """params.count == 1 on a fill relation is almost always the LLM's
+    hallucination ("filled with oleic acid" -> count 1 -> ONE invisible
+    molecule in a huge box). Drop it to None (= density auto fill) unless the
+    user literally asked for one, or the count survived from the previous
+    state (accepted earlier)."""
+    if re.search(r"\b(?:1|one|single)\b", text, re.IGNORECASE):
+        return
+    old = {(r.get("kind"), r.get("host"), r.get("guest"))
+           for r in relations_of(old_state or {})
+           if (r.get("params") or {}).get("count") == 1}
+    for r in relations_of(state):
+        if r.get("kind") in ("inside", "around", "coated_by") \
+                and (r.get("params") or {}).get("count") == 1 \
+                and (r.get("kind"), r.get("host"), r.get("guest")) not in old:
+            r["params"]["count"] = None
 
 
 def _strip_uninvited_slab_dims(state: dict, text: str) -> None:
@@ -678,18 +699,21 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
            if c.get("builder") == "nanoparticle"]
     if not nps:
         return
-    m = re.search(r"\b(\d+)\s+(?!nm\b|angstrom|Å|A\b)"
+    m = re.search(r"\b(?<!\.)(\d+)\s+(?!nm\b|angstrom|Å|A\b)"
                   r"(?:(?!nm\b|angstrom)\w+\s+){0,2}?"
                   r"(?:nanoparticles?|particles?|nps?)\b",
                   message, re.IGNORECASE)
     if not m:
         m = re.search(r"\b(?:cluster|supercrystal|superlattice|assembly)\s+"
-                      r"(?:of|with|made of)\s+(\d+)\b"
-                      r"(?!\s*(?:nm|Å|A\b|angstrom))",  # "made of 3 nm NPs"
-                      message, re.IGNORECASE)           # = a SIZE, not a count
+                      r"(?:of|with|made of)\s+(?<!\.)(\d+)\b(?!\.\d)"
+                      r"(?!\s*(?:nm|Å|A\b|angstrom))",  # "made of 3 nm NPs" or
+                      message, re.IGNORECASE)           # "of 2.6 nm" = SIZES
     n = int(m.group(1)) if m else None
     lat = re.search(r"\b(fcc|bcc)\b", message, re.IGNORECASE)
     stk = re.search(r"\b([ABC]{4,})\b", message)     # explicit stacking sequence
+    if not stk and re.search(r"stack|sequence|fault", message, re.IGNORECASE):
+        # short sequences ("AB stacked") only count with stacking wording
+        stk = re.search(r"\b([ABC]{2,3})\b", message)
     # "super..." tolerates typos (supercystall) — with an NP in the spec any
     # super word means the multi-particle arrangement
     multi = re.search(r"\bsuper\w+|nanoparticle cluster"
@@ -720,9 +744,12 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
             c["spec"]["n_particles"] = 1        # size mistaken for a count
         if n and n >= 2:
             c["spec"]["n_particles"] = n
+        elif stk and (multi or int(c["spec"].get("n_particles") or 1) >= 2):
+            # stacking defaults to 3 particles per layer; an LLM-invented
+            # count (len of the sequence) must not shrink the layers
+            c["spec"]["n_particles"] = 3 * len(stk.group(1))
         elif multi and int(c["spec"].get("n_particles") or 1) < 2:
-            # stacking sequences default to 3 particles per layer
-            c["spec"]["n_particles"] = 3 * len(stk.group(1)) if stk else default_n
+            c["spec"]["n_particles"] = default_n
         if stk and (multi or (n and n >= 2)):
             c["spec"]["lattice"] = stk.group(1)
         elif lat and (multi or (n and n >= 2)):

@@ -155,7 +155,11 @@ def build_cluster(unit: Atoms, n: int, gap: float = 10.0, name: str = "NP",
     dia = unit_diameter(unit)
     spacing = dia + gap
     lat = str(lattice or "sc")
-    stacking = len(lat) > 3 and all(c in "ABCabc" for c in lat)
+    # a layer sequence is 2+ letters from {A,B,C} that is not a packing word
+    # ("AB", "ABC", "ABCABCABAB"); "bcc" spells only A to C letters but means
+    # the packing
+    stacking = (len(lat) >= 2 and all(c in "ABCabc" for c in lat)
+                and lat.lower() not in ("sc", "fcc", "bcc"))
     if stacking:                       # explicit layer sequence (e.g. ABCABAB)
         per_layer = max(1, round(n / len(lat)))
         n = per_layer * len(lat)

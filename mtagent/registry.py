@@ -212,8 +212,10 @@ def _t_nanoparticle(spec: dict) -> str:
     rep = spec.get("repeat")
     if n > 1:
         gap = _num(spec.get("gap"), 6.0)
-        lat = str(spec.get("lattice") or "sc").lower()
-        lat_arg = f', lattice="{lat}"' if lat != "sc" else ""
+        lat = str(spec.get("lattice") or "sc")
+        if lat.lower() in ("sc", "fcc", "bcc"):
+            lat = lat.lower()            # packing word; stacking sequences
+        lat_arg = f', lattice="{lat}"' if lat != "sc" else ""  # keep case
         lines += ["from mtagent.cluster import build_cluster",
                   f"atoms = build_cluster(atoms, n={n}, gap={gap:g}{lat_arg})"]
         if rep:

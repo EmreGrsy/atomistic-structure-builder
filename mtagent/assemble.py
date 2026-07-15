@@ -54,7 +54,7 @@ def _centered(atoms: Atoms) -> Atoms:
 
 def fill_inside(host: Atoms, guest: Atoms, n: int | None = None, clearance: float = 1.7,
                 density: float | None = None, tolerance: float = 2.0,
-                workdir: str | Path = "data/work/inside", timeout: int = 120) -> Atoms:
+                workdir: str | Path = "data/work/inside", timeout: int = 900) -> Atoms:
     """Pack `n` copies of `guest` inside `host` (packmol; host fixed at the origin).
 
     Tubular hosts (extent along z >> lateral) use an inside-cylinder constraint of
@@ -95,6 +95,15 @@ def fill_inside(host: Atoms, guest: Atoms, n: int | None = None, clearance: floa
         rho = density or SOLVENT_DENSITY.get(name, 0.8)
         molar = float(guest.get_masses().sum())
         n = max(1, int(0.6 * rho * (volume_A3 * 1e-24) * _NA / molar))
+        # one packmol run converges up to ~8000 guest atoms; an auto fill
+        # beyond that is capped (a partial showcase fill, recorded in info)
+        n = min(n, max(1, 8000 // max(1, len(guest))))
+    elif int(n) * len(guest) > 10000:
+        raise RuntimeError(
+            f"that would pack {int(n) * len(guest)} guest atoms — beyond the "
+            "current packing limit (~10,000; packmol converges too slowly for "
+            "one huge fill). Use a smaller count, or build a smaller system "
+            "and replicate it.")
 
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -135,6 +144,40 @@ def _liquid_volume_A3(molecule: Atoms, n: int) -> float:
     return n * float(molecule.get_masses().sum()) / (rho * _NA) * 1e24
 
 
+def _film_footprint(slab: Atoms, tolerance: float):
+    """In-plane packmol constraints that make a film span the WHOLE periodic
+    cell (not the atoms' bounding box, which leaves a vacuum seam at the
+    borders). Returns (extra_lines, (x0, y0, x1, y1), area_A2). Rectangular
+    cells use the box directly; sheared cells (hexagonal terminations) add
+    four half plane constraints bounding the cell parallelogram, with half a
+    tolerance margin per side so periodic images meet at the packmol contact
+    distance."""
+    p = slab.get_positions()
+    lo, hi = p.min(axis=0), p.max(axis=0)
+    cellm = np.array(slab.cell, dtype=float)
+    a, b = cellm[0][:2], cellm[1][:2]
+    m = tolerance / 2.0
+    if abs(a[1]) < 1e-3 and abs(b[0]) < 1e-3:      # rectangular in-plane cell
+        x0, x1 = min(lo[0], 0.0) + m, max(hi[0], a[0]) - m
+        y0, y1 = min(lo[1], 0.0) + m, max(hi[1], b[1]) - m
+        return "", (x0, y0, x1, y1), max((x1 - x0) * (y1 - y0), 1.0)
+    lines = []
+    for v, w in ((a, b), (b, a)):                  # edges run along w
+        nvec = np.array([w[1], -w[0]])
+        nvec = nvec / np.linalg.norm(nvec)
+        if float(nvec @ v) < 0:
+            nvec = -nvec
+        d = float(nvec @ v)
+        lines.append(f"  over plane {nvec[0]:.6f} {nvec[1]:.6f} 0. {m:.3f}")
+        lines.append(f"  below plane {nvec[0]:.6f} {nvec[1]:.6f} 0. {d - m:.3f}")
+    x0 = min(lo[0], 0.0, a[0], b[0], a[0] + b[0]) - 1.0
+    y0 = min(lo[1], 0.0, a[1], b[1], a[1] + b[1]) - 1.0
+    x1 = max(hi[0], 0.0, a[0], b[0], a[0] + b[0]) + 1.0
+    y1 = max(hi[1], 0.0, a[1], b[1], a[1] + b[1]) + 1.0
+    area = abs(a[0] * b[1] - a[1] * b[0])
+    return "\n".join(lines), (x0, y0, x1, y1), max(area, 1.0)
+
+
 def _coat_slab(slab: Atoms, molecules: list, ns: list,
                clearance: float = 3.5, tolerance: float = 2.0,
                workdir: str | Path = "data/work/coat", timeout: int = 300) -> Atoms:
@@ -151,19 +194,21 @@ def _coat_slab(slab: Atoms, molecules: list, ns: list,
     lo, hi = p.min(axis=0), p.max(axis=0)
     Lz = float(slab.cell.lengths()[2])
     z0, z1 = hi[2] + clearance, Lz - clearance
+    # the film fills the WHOLE in-plane periodic cell (rectangle or sheared
+    # parallelogram), never the atoms' bounding rectangle
+    extra_lines, (x0, y0, x1, y1), area = _film_footprint(slab, tolerance)
     # if the EXPLICIT counts need more room, grow the cell along z — the in-plane
     # cell (x, y) is fixed by the slab supercell and never changes
-    area = max((hi[0] - lo[0] - 1.0) * (hi[1] - lo[1] - 1.0), 1.0)
-    fixed_need = sum(_liquid_volume_A3(m, int(n))
-                     for m, n in zip(molecules, ns) if n) / 0.75
+    fixed_need = sum(_liquid_volume_A3(m_, int(n))
+                     for m_, n in zip(molecules, ns) if n) / 0.75
     z1 = max(z1, z0 + fixed_need / area)
     new_Lz = max(Lz, z1 + clearance)
     if z1 - z0 < 3.0:
         raise RuntimeError("no vacuum above the surface to fill — increase the "
                            "slab's vacuum parameter")
-    box_lo = (lo[0] + 0.5, lo[1] + 0.5, z0)
-    box_hi = (hi[0] - 0.5, hi[1] - 0.5, z1)
-    volume_A3 = float(np.prod(np.array(box_hi) - np.array(box_lo)))
+    box_lo = (x0, y0, z0)
+    box_hi = (x1, y1, z1)
+    volume_A3 = area * (z1 - z0)
 
     # fixed counts reserve their liquid volume; auto entries share the rest
     fixed_vol = sum(_liquid_volume_A3(m, int(n))
@@ -199,6 +244,8 @@ def _coat_slab(slab: Atoms, molecules: list, ns: list,
     blocks = [f"structure {slab_xyz.name}\n  number 1\n"
               "  fixed 0. 0. 0. 0. 0. 0.\nend structure\n"]
     box_line = "  inside box " + " ".join(f"{v:.3f}" for v in (*box_lo, *box_hi))
+    if extra_lines:
+        box_line += "\n" + extra_lines
     for i, (m, c) in enumerate(zip(molecules, counts)):
         mol_xyz = work / f"mol{i}.xyz"
         write(str(mol_xyz), _centered(m), format="xyz")
@@ -349,7 +396,8 @@ def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
     p = slab.get_positions()
     lo, hi = p.min(axis=0), p.max(axis=0)
     thickness = float(hi[2] - lo[2])
-    area = max((hi[0] - lo[0] - 1.0) * (hi[1] - lo[1] - 1.0), 1.0)
+    # film spans the WHOLE in-plane cell (rectangle or sheared parallelogram)
+    film_lines, (bx0, by0, bx1, by1), area = _film_footprint(slab, tolerance)
 
     # packmol keeps the film `tolerance` away from the FIXED bottom slab, but
     # the top slab is stacked afterwards — its margin must be built into the
@@ -399,8 +447,10 @@ def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
         f"structure {top_xyz.name}\n  number 1\n"
         "  fixed 0. 0. 0. 0. 0. 0.\nend structure\n\n"
         f"structure {mol_xyz.name}\n  number {n}\n"
-        f"  inside box {lo[0] + 0.5:.3f} {lo[1] + 0.5:.3f} {z0:.3f} "
-        f"{hi[0] - 0.5:.3f} {hi[1] - 0.5:.3f} {z1:.3f}\nend structure\n")
+        f"  inside box {bx0:.3f} {by0:.3f} {z0:.3f} "
+        f"{bx1:.3f} {by1:.3f} {z1:.3f}\n"
+        + (film_lines + "\n" if film_lines else "")
+        + "end structure\n")
     proc = subprocess.run([packmol], stdin=inp.open(), cwd=work,
                           capture_output=True, text=True, timeout=timeout)
     if not out_xyz.exists() or "Success" not in proc.stdout:
