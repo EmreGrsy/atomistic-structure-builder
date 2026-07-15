@@ -278,17 +278,23 @@ def som_section() -> str:
                   ("#e3e9f4", "#33445f"),
                   "U matrix (mean neighbor distance)")
     hits = [c["hits"] for c in s["cells"]]
+    occ, mx = sum(1 for h in hits if h), max(hits)
     hm = _hex_svg(coords, hits, [str(v) if v else "" for v in hits],
                   ("#efe8d8", "#8a6d3b"), "BMU hit map (prompts per neuron)")
     return f"""
   <h3>Prompt space analysis (SOM)</h3>
-  <p class="doc">A benchmark is only as strong as the variety of its prompts:
-  100 rephrasings of the same request would prove little. This section
-  checks that variety. Each prompt is placed on a map where similar prompts
-  land close together and different prompts land far apart; a benchmark of
-  near duplicates would collapse onto a few spots, while this set spreads
-  into distinct, well separated groups.
-  Technically, the 100 prompts were converted into 3072 dimensional
+  <p class="doc">The benchmark score above is only meaningful if the
+  {s['n']} prompts are {s['n']} genuinely different requests, not one
+  question asked a hundred times. This map is that check. Similar prompts
+  land on the same spot and different prompts land far apart, so a
+  repetitive prompt set would collapse into one or two big piles. Here the
+  prompts spread over {occ} of the {len(hits)} spots, no spot holds more
+  than {mx}, and the occupied spots group naturally by task, nanotube
+  requests together, nanoparticle requests together, surfaces elsewhere,
+  with empty space between the groups: broad variety between task families,
+  coherence within them. The perfect score was earned on a hundred
+  different tasks, not one easy task a hundred times.
+  Technically, the {s['n']} prompts were converted into 3072 dimensional
   embedding vectors with OpenAI's <code>text-embedding-3-large</code> model
   and a 10&times;10 hexagonally packed self organizing map (SOM;
   <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
