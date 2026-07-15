@@ -24,6 +24,7 @@ APP_VERSION = "0.1.0"
 # the app's default Streamlit palette
 BG, TEXT, CELLC, OUTLINE = "#e9eaec", "#3d4148", "#8f939b", 0.10
 PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#222834", "#e9edf4", "#39435a", "#151a22"
+BAR_BLUE = "#7f97b8"           # benchmark bar fill; also the hyperlink color
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
 # element color overrides (user's publication convention); others use Jmol
 CUSTOM_COLORS = {"Fe": "#3565c0"}
@@ -319,7 +320,7 @@ def metrics_section() -> str:
     s = json.loads(path.read_text())
     cats = sorted(s["by_category"].items())
     # single-hue horizontal bars sampled from the U matrix ramp (4.0:1)
-    bar, track, ink = "#7f97b8", "rgba(233,237,244,.12)", PAGE_TEXT
+    bar, track, ink = BAR_BLUE, "rgba(233,237,244,.12)", PAGE_TEXT
     rows = []
     for name, d in cats:
         pct = 100.0 * d["ok"] / d["n"]
@@ -366,8 +367,8 @@ def metrics_section() -> str:
     .bfill {{ height:100%; background:{bar}; border-radius:4px; }}
     .bval {{ width:48px; font-size:12.5px; color:{ink}; opacity:.75; }}
     .promptlink {{ display:inline-block; margin-top:6px; padding:7px 14px;
-      background:{bar}; color:#ffffff; border-radius:8px; font-weight:600;
-      text-decoration:none; }}
+      background:{PAGE_BG}; color:{PAGE_TEXT}; border:1px solid {PAGE_LINE};
+      border-radius:8px; font-weight:600; text-decoration:none; }}
     .promptlink:hover {{ filter:brightness(1.1); }}
   </style>"""
 
@@ -412,6 +413,7 @@ def main() -> None:
   h2 {{ font-size:19px; margin:36px 0 8px; border-bottom:1px solid {PAGE_LINE};
         padding-bottom:4px; }}
   p.doc, li {{ font-size:14.5px; line-height:1.55; }}
+  a {{ color:{BAR_BLUE}; }}
   ol {{ padding-left:22px; }}
   .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
            gap:18px; margin-top:14px; }}
