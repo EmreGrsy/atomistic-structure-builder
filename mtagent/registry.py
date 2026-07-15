@@ -231,7 +231,11 @@ def _t_solvent_box(spec: dict) -> str:
         fill_arg = f", n={int(n)}"
     else:
         dens = spec.get("density")
-        fill_arg = f", density={_num(dens, 1.0):g}" if dens is not None else ""
+        try:                            # 0/None/"auto" = reference density
+            dens = float(dens) if dens is not None else None
+        except (TypeError, ValueError):
+            dens = None
+        fill_arg = f", density={dens:g}" if dens else ""
     return ("from mtagent.pubchem import get_molecule\n"
             "from mtagent.solvent import build_solvent_box\n"
             f'mol = get_molecule("{mol}")\n'

@@ -136,7 +136,7 @@ def _liquid_volume_A3(molecule: Atoms, n: int) -> float:
 
 
 def _coat_slab(slab: Atoms, molecules: list, ns: list,
-               clearance: float = 1.5, tolerance: float = 2.0,
+               clearance: float = 3.5, tolerance: float = 2.0,
                workdir: str | Path = "data/work/coat", timeout: int = 300) -> Atoms:
     """Coat a SLAB: fill the vacuum of its simulation cell with the molecules —
     ALL guest species packed in ONE packmol run (slab fixed), one shared cell.
@@ -422,7 +422,7 @@ def sandwich(slab: Atoms, molecule: Atoms, n: int | None = None,
     return combined
 
 
-def place_on(host: Atoms, guest: Atoms, n: int = 1, height: float = 2.5) -> Atoms:
+def place_on(host: Atoms, guest: Atoms, n: int = 1, height: float = 3.5) -> Atoms:
     """Place `n` copies of `guest` on the top surface of `host` (grid in-plane)."""
     host = host.copy()
     hp = host.get_positions()
@@ -450,13 +450,14 @@ def combine_template_multi(relations: list, by_key: dict) -> str:
     """Assembly snippet for MULTIPLE relations. Consecutive coatings of the SAME
     host are packed together in one coat_layers call (they share the free volume);
     other relations apply sequentially to the growing `atoms` structure."""
-    steps: list[tuple] = []                 # ("coat_group", host, [rels]) | ("one", rel)
+    steps: list[tuple] = []                 # ("coat_group"|"around_group", host, [rels]) | ("one", rel)
     for rel in relations:
-        if rel["kind"] == "coated_by" and steps \
-                and steps[-1][0] == "coat_group" and steps[-1][1] == rel["host"]:
+        kind = rel["kind"]
+        group = {"coated_by": "coat_group", "around": "around_group"}.get(kind)
+        if group and steps and steps[-1][0] == group and steps[-1][1] == rel["host"]:
             steps[-1][2].append(rel)
-        elif rel["kind"] == "coated_by":
-            steps.append(("coat_group", rel["host"], [rel]))
+        elif group:
+            steps.append((group, rel["host"], [rel]))
         else:
             steps.append(("one", rel))
 
@@ -482,13 +483,32 @@ def combine_template_multi(relations: list, by_key: dict) -> str:
             add("from mtagent.assemble import coat_layers\n"
                 f"atoms = coat_layers({host}, [{guests}], ns=[{ns}])")
             consumed.add(host_key)
+        elif step[0] == "around_group" and len(step[2]) > 1 and any(
+                by_key[r["guest"]]["builder"] == "solvent_box" for r in step[2]):
+            # several species around one host: extra guests DISSOLVE into the
+            # solvent box, then ONE carve-and-insert solvation
+            host_key, rels = step[1], step[2]
+            host = "atoms" if host_key in consumed else host_key
+            box_r = next(r for r in rels
+                         if by_key[r["guest"]]["builder"] == "solvent_box")
+            code = [f"box = {box_r['guest']}"]
+            for r in rels:
+                if r is box_r:
+                    continue
+                cnt = (r.get("params") or {}).get("count") or 10
+                code.append(f"box = add_to_box(box, {r['guest']}, n={int(cnt)})")
+            code.append(f"atoms = solvate({host}, box)")
+            add("from mtagent.solvent import add_to_box, solvate\n"
+                + "\n".join(code))
+            consumed.add(host_key)
         else:
-            rel = step[2][0] if step[0] == "coat_group" else step[1]
-            host = "atoms" if rel["host"] in consumed else rel["host"]
-            add(combine_template(rel["kind"], host, rel["guest"],
-                                 by_key[rel["guest"]]["builder"],
-                                 rel.get("params") or {}))
-            consumed.add(rel["host"])
+            rels_g = step[2] if step[0] in ("coat_group", "around_group") else [step[1]]
+            for rel in rels_g:
+                host = "atoms" if rel["host"] in consumed else rel["host"]
+                add(combine_template(rel["kind"], host, rel["guest"],
+                                     by_key[rel["guest"]]["builder"],
+                                     rel.get("params") or {}))
+                consumed.add(rel["host"])
     return "\n".join(imports + lines)
 
 

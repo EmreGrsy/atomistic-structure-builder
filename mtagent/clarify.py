@@ -217,6 +217,27 @@ def _sanitize(state: dict) -> dict:
             betw_by_guest[r["guest"]] = r
         kept.append(r)
     rels = kept
+    # a molecule added to an already SOLVATED nanoparticle dissolves into the
+    # solvent box (one mixed solvation), it does not form a moltemplate shell
+    by_key2 = {c["key"]: c for c in cs}
+    # "oleic inside the water box": the LLM hosts the molecule ON THE BOX —
+    # redirect to a dissolve-around on whatever that box solvates
+    for r in rels:
+        if (by_key2.get(r["host"]) or {}).get("builder") == "solvent_box" \
+                and (by_key2.get(r["guest"]) or {}).get("builder") == "molecule":
+            outer = next((r2 for r2 in rels if r2["kind"] == "around"
+                          and r2["guest"] == r["host"]), None)
+            if outer:
+                r["kind"], r["host"] = "around", outer["host"]
+    solvated_hosts = {
+        r["host"] for r in rels if r["kind"] == "around"
+        and (by_key2.get(r["guest"]) or {}).get("builder") == "solvent_box"}
+    for r in rels:
+        if r["kind"] in ("coated_by", "inside") \
+                and r["host"] in solvated_hosts \
+                and (by_key2.get(r["host"]) or {}).get("builder") == "nanoparticle" \
+                and (by_key2.get(r["guest"]) or {}).get("builder") == "molecule":
+            r["kind"] = "around"
     still_used = {r["host"] for r in rels} | {r["guest"] for r in rels} \
         | {r["params"]["second_host"] for r in rels
            if r.get("params", {}).get("second_host")}

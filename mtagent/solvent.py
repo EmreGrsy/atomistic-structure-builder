@@ -47,6 +47,13 @@ def build_solvent_box(molecule: Atoms, box_size: float = 40.0, density: float | 
     packmol = find_packmol()
     if packmol is None:
         raise RuntimeError("packmol not found on PATH")
+    if box_size < 15.0:
+        raise ValueError(
+            f"box_size={box_size:g} Å is smaller than a single solvation "
+            "shell. Sizes are in Ångström (1 nm = 10 Å); a typical box is "
+            "30 to 60 Å.")
+    if density is not None and float(density) <= 0:
+        density = None                  # LLM "auto" spelled as density=0
     target_density = density
     if n is not None:
         try:                            # LLMs express "auto" as 0/None/"auto"
@@ -99,6 +106,53 @@ def build_solvent_box(molecule: Atoms, box_size: float = 40.0, density: float | 
     return box
 
 
+def add_to_box(box: Atoms, molecule: Atoms, n: int, name: str = "solute",
+               tolerance: float = 2.0, workdir: str | Path = "data/work",
+               timeout: int = 900) -> Atoms:
+    """Dissolve `n` copies of `molecule` INTO an existing solvent box.
+
+    Packmol keeps the box contents fixed and packs the new species into the
+    same periodic cube. The result records per species molecule sizes so
+    solvate() can carve every species correctly."""
+    packmol = find_packmol()
+    if packmol is None:
+        raise RuntimeError("packmol not found on PATH")
+    n = int(n)
+    L = float(box.cell.lengths()[0])
+    h = L / 2.0 - 0.5
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    box_xyz, mol_xyz, out_xyz = (work / "mix_box.xyz", work / "mix_mol.xyz",
+                                 work / "mix_out.xyz")
+    write(str(box_xyz), box, format="xyz")
+    m = molecule.copy()
+    m.set_positions(m.get_positions() - m.get_positions().mean(axis=0))
+    write(str(mol_xyz), m, format="xyz")
+    inp = work / "mix.inp"
+    inp.write_text(
+        f"tolerance {tolerance}\nfiletype xyz\noutput {out_xyz.name}\n\n"
+        f"structure {box_xyz.name}\n  number 1\n"
+        "  fixed 0. 0. 0. 0. 0. 0.\nend structure\n\n"
+        f"structure {mol_xyz.name}\n  number {n}\n"
+        f"  inside box {-h:.3f} {-h:.3f} {-h:.3f} {h:.3f} {h:.3f} {h:.3f}\n"
+        "end structure\n")
+    proc = subprocess.run([packmol], stdin=inp.open(), cwd=work,
+                          capture_output=True, text=True, timeout=timeout)
+    if not out_xyz.exists() or "Success" not in proc.stdout:
+        raise RuntimeError(f"packmol add_to_box failed:\n{proc.stdout[-1200:]}")
+    mixed = read(str(out_xyz))
+    mixed.set_cell(box.get_cell())
+    mixed.set_pbc(True)
+    blocks = box.info.get("species_blocks") or [
+        [int(box.info.get("n_per_molecule", 1)),
+         int(box.info.get("n_molecules",
+                          len(box) // max(1, box.info.get("n_per_molecule", 1))))]]
+    mixed.info.update(box.info)
+    mixed.info["species_blocks"] = blocks + [[len(molecule), n]]
+    mixed.info["packmol_inp"] = inp.read_text()
+    return mixed
+
+
 def solvate(solute: Atoms, solvent_box: Atoms, clash: float = 2.5) -> Atoms:
     """Carve a cavity in `solvent_box` for `solute` and insert it (delete clashing solvent).
 
@@ -113,26 +167,37 @@ def solvate(solute: Atoms, solvent_box: Atoms, clash: float = 2.5) -> Atoms:
             "all solvent near the solute. clash is the solute–solvent overlap "
             "cutoff (typical 2–3 Å); to control the amount of solvent, size "
             "the box via build_solvent_box(box_size=...) instead.")
-    k = solvent_box.info.get("n_per_molecule", 1)
     solute = solute.copy()
     solute.set_positions(solute.get_positions() - solute.get_positions().mean(axis=0))
 
     sp = solvent_box.get_positions()
     tree = cKDTree(solute.get_positions())
     dmin, _ = tree.query(sp)                                  # nearest solute atom per solvent atom
-    n_mol = len(sp) // k
-    mol_min = dmin[:n_mol * k].reshape(n_mol, k).min(axis=1)  # nearest per solvent molecule
-    keep_mol = mol_min >= clash
-    keep_atom = np.repeat(keep_mol, k)
+    # per species molecule sizes: a plain box is one block; a mixed box
+    # (add_to_box) carries several
+    blocks = solvent_box.info.get("species_blocks") or [
+        [int(solvent_box.info.get("n_per_molecule", 1)),
+         len(sp) // max(1, int(solvent_box.info.get("n_per_molecule", 1)))]]
+    keep_atom = np.zeros(len(sp), dtype=bool)
+    n_kept = n_removed = 0
+    off = 0
+    for k, count in blocks:
+        seg = dmin[off:off + k * count].reshape(count, k).min(axis=1)
+        keep = seg >= clash
+        keep_atom[off:off + k * count] = np.repeat(keep, k)
+        n_kept += int(keep.sum())
+        n_removed += int((~keep).sum())
+        off += k * count
+    keep_mol = None                                           # totals below
 
-    kept = solvent_box[np.concatenate([keep_atom, np.zeros(len(sp) - n_mol * k, bool)])]
+    kept = solvent_box[keep_atom]
     combined = solute + kept
     combined.set_cell(solvent_box.get_cell())
     combined.set_pbc(True)
     combined.info["solvation"] = {
         "solute_atoms": len(solute),
-        "solvent_molecules_kept": int(keep_mol.sum()),
-        "solvent_molecules_removed": int((~keep_mol).sum()),
+        "solvent_molecules_kept": n_kept,
+        "solvent_molecules_removed": n_removed,
         "total_atoms": len(combined),
         "clash": clash,
     }
