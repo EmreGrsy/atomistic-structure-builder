@@ -271,6 +271,7 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
         return _fallback_parse(query)
     state = chat_json([{"role": "user", "content": query}], _parse_system(), model=model)
     state = _sanitize(state)
+    _apply_gamma_hint(state, query)
     _apply_nparticles_hint(state, query)
     _strip_uninvited_repeat(state, query)
     _bulk_vs_slab_hint(state, query)
@@ -371,19 +372,20 @@ def respond(state: dict, message: str, gap: Gap | None = None, context: str = ""
         if out.get("intent") in ("edit", "question", "build", "new") else "edit"
     if intent != "new" and _new_system_hint(state, message):
         intent = "new"
-    new_state = state
+    new_state, note = state, None
     if intent == "edit":
         new_state = _sanitize(out.get("state") or {})
         if not new_state["constituents"]:
             new_state = state
         _apply_repeat_hint(new_state, message)
         _apply_facet_hint(new_state, message)
+        note = _apply_gamma_hint(new_state, message)
         _apply_nparticles_hint(new_state, message)
         _apply_add_count_hint(state, new_state, message)
         _strip_uninvited_repeat(new_state, message,
                                 keep=_slab_repeats_of(state))
     return {"intent": intent, "answer": str(out.get("answer") or ""),
-            "state": new_state}
+            "state": new_state, "note": note}
 
 
 def _apply_repeat_hint(state: dict, message: str) -> None:
@@ -405,6 +407,51 @@ def _apply_repeat_hint(state: dict, message: str) -> None:
 _FACET_FAMILY = {"111": "gamma_111",
                  "100": "gamma_100", "010": "gamma_100", "001": "gamma_100",
                  "110": "gamma_110", "101": "gamma_110", "011": "gamma_110"}
+
+
+def _apply_gamma_hint(state: dict, message: str) -> str | None:
+    """Deterministic gamma edit: 'make gamma 011 zero', 'set the 010 surface
+    energy to 1.2'. The LLM only knows the canonical param names, so an alias
+    index (011, 001, 101...) is reliably ignored by the merge — parse it from
+    the message and set the canonical family param directly. Returns a note
+    for the user when the index was an alias or the value was already set."""
+    val_pat = r"(zero|none|off|\d+(?:\.\d+)?)"
+    hits = re.findall(
+        r"\bgamma\b[^\d]{0,12}?\(?(\d{3})\)?(?:\s*(?:to|=|:|is))?\s*" + val_pat,
+        message, re.IGNORECASE)
+    hits += re.findall(
+        r"\(?(\d{3})\)?[^\d]{0,12}?\b(?:gamma|surface energy)\b"
+        r"(?:\s*(?:to|=|:|is))?\s*" + val_pat,
+        message, re.IGNORECASE)
+    if re.search(r"\b(?:gamma|facet|surface)\b", message, re.IGNORECASE):
+        hits += [(m, "none") for m in re.findall(
+            r"\b(?:remove|drop|delete|disable|no)\b[^\d]{0,20}?\(?(\d{3})\)?",
+            message, re.IGNORECASE)]
+    notes = []
+    for idx, raw in hits:
+        param = _FACET_FAMILY.get(idx)
+        if param is None:
+            continue
+        canon_idx = param.split("_")[1]
+        value = "none" if raw.lower() in ("zero", "none", "off", "0", "0.0") \
+            else float(raw)
+        if idx != canon_idx:
+            notes.append(f"({idx}) is the same cubic facet family as "
+                         f"({canon_idx}), so it sets {param}.")
+        for c in state.get("constituents", []):
+            if c.get("builder") != "nanoparticle":
+                continue
+            old = c["spec"].get(param)
+            old_removed = old in ("none", "off", None) \
+                or (_is_number(old) and float(old) <= 0)
+            if value == "none" and old_removed and old is not None:
+                notes.append(f"{param} is already removed, nothing changed.")
+                continue                 # keep the existing removal marker
+            if _is_number(old) and value != "none" \
+                    and abs(float(old) - value) < 1e-9:
+                notes.append(f"{param} is already {value:g}, nothing changed.")
+            c["spec"][param] = value
+    return " ".join(notes) or None
 
 
 def _apply_facet_hint(state: dict, message: str) -> None:

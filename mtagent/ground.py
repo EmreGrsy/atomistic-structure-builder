@@ -240,10 +240,13 @@ def _slab_inplane_unit(spec: dict) -> tuple[float, float, float] | None:
         return None
 
 
-def _match_repeats(u1: float, u2: float, max_rep: int = 8,
-                   max_len: float = 45.0) -> tuple[int, int] | None:
-    """Repeat counts (n1, n2) with n1*u1 ≈ n2*u2: minimal strain, then minimal
-    size, under the sandwich's 12% strain cap and a size budget."""
+def _match_repeats(u1: float, u2: float, max_rep: int = 12,
+                   max_len: float = 45.0,
+                   min_len: float = 20.0) -> tuple[int, int] | None:
+    """Repeat counts (n1, n2) with n1*u1 ≈ n2*u2: minimal strain, then a cell
+    that reaches min_len (a matched 1 repeat strip is a useless sliver even at
+    zero strain), then minimal size — under the sandwich's 12% strain cap and
+    a size budget."""
     best = None
     for n1 in range(1, max_rep + 1):
         for n2 in range(1, max_rep + 1):
@@ -253,7 +256,7 @@ def _match_repeats(u1: float, u2: float, max_rep: int = 8,
             strain = abs(L1 - L2) / max(L1, L2)
             if strain > 0.12:
                 continue
-            score = (round(strain, 3), max(L1, L2))
+            score = (round(strain, 3), max(L1, L2) < min_len, max(L1, L2))
             if best is None or score < best[0]:
                 best = (score, n1, n2)
     return (best[1], best[2]) if best else None

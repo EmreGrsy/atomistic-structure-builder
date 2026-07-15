@@ -520,6 +520,7 @@ if prompt:
                         refresh(r["state"])
                 elif r["intent"] == "edit":
                     SS.messages.append({"role": "assistant", "content":
+                                        r.get("note") or
                                         "That didn't change anything in the plan. The "
                                         "spec is as shown above. Ask me a question about "
                                         "it, adjust a parameter, or say **build**."})
