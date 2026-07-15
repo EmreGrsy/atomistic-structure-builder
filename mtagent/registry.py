@@ -171,9 +171,12 @@ def _t_nanoparticle(spec: dict) -> str:
                 if g <= 0:                         # "0 surface energy" = user
                     continue                       # means: no such facet
                 facets[hkl] = g
-            if not facets:
-                raise ValueError("a Wulff particle needs at least one facet "
-                                 "family — all gammas are removed (none/0)")
+            if len(facets) < 2:
+                raise ValueError(
+                    "a Wulff particle needs at least 2 facet families with a "
+                    f"positive gamma, {len(facets)} left after removals "
+                    "(gamma 0 or none removes a family). Keep a second "
+                    "family, or use shape sphere or cube instead.")
             gamma_src = "{" + ", ".join(f"{h}: {g:g}" for h, g in facets.items()) + "}"
             lines += ["from mtagent.wulff import build_magnetite_wulff",
                       "# relative surface energies (gamma_111 normalized to 1;",

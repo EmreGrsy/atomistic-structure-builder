@@ -216,6 +216,20 @@ def suggestion_message(state: dict, final: dict, proposals: dict) -> str:
     return "\n".join(out)
 
 
+def spec_problem(state: dict) -> str | None:
+    """Dry-run the canonical templates on the finalized spec. Parameter
+    combinations the registry refuses (for example fewer than 2 Wulff facet
+    families) surface HERE, as a chat reply, not as a build time traceback."""
+    import copy
+    try:
+        final = ground.finalize(copy.deepcopy(state))
+        for c in final["constituents"]:
+            BUILDERS[c["builder"]].template(c["spec"])
+    except ValueError as e:
+        return str(e)
+    return None
+
+
 def refresh(state: dict) -> None:
     """Re-finalize + re-propose after every spec change, and post the suggestion."""
     SS.spec = state
@@ -495,8 +509,15 @@ if prompt:
                     parse_fresh(prompt, sb)
                 elif r["intent"] == "edit" and json.dumps(
                         r["state"], sort_keys=True) != json.dumps(SS.spec, sort_keys=True):
-                    sb.write("Applying changes…")
-                    refresh(r["state"])
+                    problem = spec_problem(r["state"])
+                    if problem:
+                        SS.messages.append({
+                            "role": "assistant",
+                            "content": f"I can't apply that: {problem} "
+                                       "The spec stays as shown above."})
+                    else:
+                        sb.write("Applying changes…")
+                        refresh(r["state"])
                 elif r["intent"] == "edit":
                     SS.messages.append({"role": "assistant", "content":
                                         "That didn't change anything in the plan. The "

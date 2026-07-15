@@ -48,14 +48,20 @@ def _cubic_equivalents(hkl: tuple[int, int, int]) -> list[np.ndarray]:
 def wulff_carve(cell: Atoms, gamma: dict, diameter: float) -> Atoms:
     """Carve a Wulff-shaped nanoparticle (target max diameter, Angstrom) from a cubic cell.
 
-    `gamma` maps facet Miller indices to RELATIVE surface energies (all > 0).
+    `gamma` maps facet Miller indices to RELATIVE surface energies.
     In a Wulff construction each facet sits at a distance PROPORTIONAL to its
-    gamma: a LOWER gamma brings that facet closer to the center and makes it
-    LARGER/more prominent; gamma <= 0 would slice the particle away entirely.
+    gamma: a LOWER (positive) gamma brings that facet closer to the center and
+    makes it LARGER/more prominent. A gamma <= 0 (or None) means the user wants
+    that facet family REMOVED from the shape entirely; it is dropped from the
+    construction (same convention as the registry template and chat edits).
     """
     if not gamma:
         raise ValueError("gamma is empty — at least one facet family is needed "
                          "to bound the Wulff shape")
+    # gamma <= 0 / None reads as "no such facet" (0 surface energy would carve
+    # the particle to nothing, never what the user means) — drop the family
+    gamma = {hkl: float(g) for hkl, g in gamma.items()
+             if g is not None and float(g) > 0}
     # cubic symmetry folds e.g. (0,0,1) and (1,0,0) into the SAME facet family —
     # two entries for one family would silently compete (tightest plane wins)
     families: dict = {}
@@ -68,13 +74,13 @@ def wulff_carve(cell: Atoms, gamma: dict, diameter: float) -> Atoms:
                 f"surface energies ({g} vs {families[canon][1]}) — give the "
                 "family one value.")
         families.setdefault(canon, (hkl, float(g)))
-    bad = {hkl: g for hkl, g in gamma.items() if not (float(g) > 0)}
-    if bad:
+    if len(families) < 2:
+        kept = ", ".join("{" + "".join(map(str, c)) + "}" for c in families) \
+            or "none"
         raise ValueError(
-            f"surface energies must be > 0, got {bad}: the Wulff facet "
-            "distance is proportional to gamma, so 0 carves the particle to "
-            "nothing. To make a facet MORE prominent use a LOWER (but "
-            "positive) gamma, e.g. 0.8; to suppress it use a HIGHER one.")
+            f"a Wulff shape requires at least 2 facet families with a "
+            f"positive gamma, got {kept} (gamma 0 or none removes a family). "
+            "Keep a second family, or use shape sphere or cube instead.")
     a = cell.cell.lengths()[0]
     nrep = int(np.ceil(diameter / a)) + 3
     sc = cell.repeat((nrep, nrep, nrep))

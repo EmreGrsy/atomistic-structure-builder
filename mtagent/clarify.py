@@ -220,6 +220,23 @@ def _sanitize(state: dict) -> dict:
     # a molecule added to an already SOLVATED nanoparticle dissolves into the
     # solvent box (one mixed solvation), it does not form a moltemplate shell
     by_key2 = {c["key"]: c for c in cs}
+    # "around" hosted on the BOX itself ("water box around the NP") is the
+    # relation INVERTED — the solvated structure is always the host
+    for r in rels:
+        if r["kind"] in ("around", "inside") \
+                and (by_key2.get(r["host"]) or {}).get("builder") == "solvent_box" \
+                and (by_key2.get(r["guest"]) or {}).get("builder") not in (
+                    "solvent_box", "molecule", None):
+            r["kind"], r["host"], r["guest"] = "around", r["guest"], r["host"]
+    # the LLM sometimes emits BOTH directions of the same pair — keep the first
+    seen_pairs, uniq = set(), []
+    for r in rels:
+        pair = (r["kind"], frozenset((r["host"], r["guest"])))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        uniq.append(r)
+    rels = uniq
     # "oleic inside the water box": the LLM hosts the molecule ON THE BOX —
     # redirect to a dissolve-around on whatever that box solvates
     for r in rels:
