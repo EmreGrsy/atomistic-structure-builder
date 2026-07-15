@@ -429,14 +429,25 @@ def _apply_repeat_hint(state: dict, message: str) -> None:
     lands in width or nowhere), so a bare NxM in the user's message sets the
     slab's `repeat` directly. Skipped for NxMxK (a 3D box, not a supercell)
     and when a unit follows (e.g. '40x40 Å' is a size, not a repeat)."""
+    m3 = re.search(r"\b(\d+)\s*[x×]\s*(\d+)\s*[x×]\s*(\d+)\b"
+                   r"(?!\s*(?:nm|Å|A\b|angstrom))", message, re.IGNORECASE)
     m = re.search(r"\b(\d+)\s*[x×]\s*(\d+)\b"
                   r"(?!\s*[x×]\s*\d)(?!\s*(?:nm|Å|A\b|angstrom))",
                   message, re.IGNORECASE)
-    if not m:
-        return
-    for c in state.get("constituents", []):
-        if c.get("builder") == "surface_slab":
+    slabs = [c for c in state.get("constituents", [])
+             if c.get("builder") == "surface_slab"]
+    if m:
+        for c in slabs:
             c["spec"]["repeat"] = f"{m.group(1)}x{m.group(2)}"
+    if slabs or not (m or m3):
+        return
+    # no slab: an NxM(xK) on a periodic SUPERCRYSTAL replicates its cell
+    rep = (f"{m3.group(1)}x{m3.group(2)}x{m3.group(3)}" if m3
+           else f"{m.group(1)}x{m.group(2)}")
+    for c in state.get("constituents", []):
+        if c.get("builder") == "nanoparticle" \
+                and int(float(c["spec"].get("n_particles") or 1)) > 1:
+            c["spec"]["repeat"] = rep
 
 
 # cubic families: any member index the user types maps to its gamma param
@@ -529,7 +540,8 @@ def _is_number(v) -> bool:
 def _slab_repeats_of(state: dict) -> dict:
     return {c["key"]: c["spec"].get("repeat")
             for c in state.get("constituents", [])
-            if c.get("builder") == "surface_slab" and c["spec"].get("repeat")}
+            if c.get("builder") in ("surface_slab", "nanoparticle")
+            and c["spec"].get("repeat")}
 
 
 def _strip_uninvited_slab_dims(state: dict, text: str) -> None:
@@ -564,7 +576,8 @@ def _strip_uninvited_repeat(state: dict, text: str, keep: dict | None = None) ->
         return                       # the user DID give an NxM — trust the spec
     keep = keep or {}
     for c in state.get("constituents", []):
-        if c.get("builder") == "surface_slab" and c["spec"].get("repeat"):
+        if c.get("builder") in ("surface_slab", "nanoparticle") \
+                and c["spec"].get("repeat"):
             if c["spec"]["repeat"] != keep.get(c["key"]):
                 c["spec"].pop("repeat")
 

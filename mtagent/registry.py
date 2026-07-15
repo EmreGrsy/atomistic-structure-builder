@@ -98,6 +98,13 @@ def _is_oxide(spec: dict) -> bool:
     return bool(spec.get("oxide")) or any(o in m for o in OXIDES)
 
 
+def _is_cluster(spec: dict) -> bool:
+    try:
+        return int(float(spec.get("n_particles") or 1)) > 1
+    except (TypeError, ValueError):
+        return False
+
+
 def _is_wulff(spec: dict) -> bool:
     return _is_oxide(spec) and (spec.get("shape") or "wulff").lower() == "wulff"
 
@@ -202,12 +209,34 @@ def _t_nanoparticle(spec: dict) -> str:
             lines += ["from mtagent.nanostructures import build_element_sphere",
                       f'atoms = build_element_sphere("{el}", diameter={d:g})']
     n = int(spec.get("n_particles") or 1)
+    rep = spec.get("repeat")
     if n > 1:
         gap = _num(spec.get("gap"), 6.0)
         lat = str(spec.get("lattice") or "sc").lower()
         lat_arg = f', lattice="{lat}"' if lat != "sc" else ""
         lines += ["from mtagent.cluster import build_cluster",
                   f"atoms = build_cluster(atoms, n={n}, gap={gap:g}{lat_arg})"]
+        if rep:
+            m = re.fullmatch(r"\s*(\d+)\s*[x×]\s*(\d+)(?:\s*[x×]\s*(\d+))?\s*",
+                             str(rep))
+            if not m:
+                raise ValueError(f"repeat {rep!r} is not NxM or NxMxK")
+            nx, ny, nz = int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)
+            basis = {"sc": 1, "fcc": 4, "bcc": 2}.get(lat)
+            k = round((n / basis) ** (1.0 / 3.0)) if basis else 0
+            if not basis or basis * k ** 3 != n:
+                raise ValueError(
+                    f"repeat needs a PERIODIC supercrystal: n_particles={n} "
+                    f"does not fill whole {lat} cells. Commensurate counts: "
+                    "sc 1/8/27, fcc 4/32/108, bcc 2/16/54 per k cells; set "
+                    "n_particles accordingly, then repeat.")
+            lines += [f"atoms = atoms.repeat(({nx}, {ny}, {nz}))"]
+    elif rep:
+        raise ValueError(
+            "repeat applies to a periodic SUPERCRYSTAL cell; a single "
+            "nanoparticle has no cell to repeat. Ask for a supercrystal "
+            "(n_particles 2 or more filling whole cells) first, or grow the "
+            "particle via its diameter instead.")
     return "\n".join(lines)
 
 
@@ -353,6 +382,10 @@ BUILDERS: dict[str, Builder] = {b.name: b for b in (
          Param("gap", "float", default=6.0,
                help="surface to surface spacing between cluster particles, Å "
                     "(default 6, the documentation supercrystal spacing)"),
+         Param("repeat", "str", when=_is_cluster,
+               help="replicate the periodic supercrystal cell as NxM or NxMxK "
+                    "(2x2 = 2x2x1); n_particles must fill whole cells "
+                    "(sc 8, fcc 4, bcc 2, ...)"),
          Param("lattice", "str", default="sc",
                help="superlattice packing of a multi-particle supercrystal: "
                     "sc (simple cubic), fcc, bcc, or an explicit close-packed "
