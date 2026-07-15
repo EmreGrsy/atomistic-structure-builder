@@ -178,6 +178,21 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 - a reverse proxy (nginx or similar) with TLS in front of the port, and
   websocket forwarding enabled (Streamlit needs it).
 
-Streamlit Community Cloud is pip only, which does not provide the packmol
-binary; use a Docker image or a plain server instead. See `ROADMAP.md` for
-the deployment decision status.
+### Free hosting (Streamlit Community Cloud)
+
+The repo is set up for the free tier: `packages.txt` installs the packmol
+binary from apt and `requirements.txt` covers everything else (moltemplate
+is pip). Steps:
+
+1. Push this repo to GitHub.
+2. On https://share.streamlit.io sign in with GitHub and create a new app
+   from the repo, main file `app.py`, Python 3.11.
+3. In the app settings under Secrets paste the content of your
+   `.streamlit/secrets.toml` (the OPENAI_API_KEY line). Secrets never live
+   in the repo.
+
+Free tier caveats: modest CPU and memory (large builds run slower and the
+packmol timeout matters), the app sleeps after inactivity and wakes on the
+next visit, and the machine's disk is ephemeral, so nothing durable can be
+stored on it. For heavier use, the same repo runs on any server with the
+conda environment (see above) or in a Docker image.
