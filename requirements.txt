@@ -5,6 +5,7 @@
 ase>=3.29
 scipy>=1.17
 numpy
+networkx
 requests
 moltemplate            # provides moltemplate.sh
 streamlit>=1.59
