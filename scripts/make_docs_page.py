@@ -407,6 +407,18 @@ def main() -> None:
   body {{ margin:0; background:{PAGE_BG}; color:{PAGE_TEXT};
          font-family:'Segoe UI', system-ui, sans-serif; }}
   main {{ max-width:1200px; margin:0 auto; padding:36px 24px 64px; }}
+  #side {{ position:fixed; top:0; left:0; bottom:0; width:250px;
+           background:{CARD_BG}; border-right:1px solid {PAGE_LINE};
+           padding:24px 18px; box-sizing:border-box; }}
+  #side h3 {{ font-size:17px; margin:0 0 6px; }}
+  #side p {{ font-size:13.5px; opacity:.85; line-height:1.45; margin:0 0 16px; }}
+  #side .promptlink {{ display:block; text-align:center; margin-top:0; }}
+  body {{ padding-left:250px; }}
+  @media (max-width: 980px) {{
+    #side {{ position:static; width:auto; border-right:none;
+             border-bottom:1px solid {PAGE_LINE}; }}
+    body {{ padding-left:0; }}
+  }}
   h1 {{ font-size:28px; margin:0; }}
   .tagline {{ font-size:15px; opacity:.8; margin:4px 0 0; }}
   .version {{ font-size:12.5px; opacity:.55; }}
@@ -431,6 +443,12 @@ def main() -> None:
 </style>
 </head>
 <body>
+<div id="side">
+  <h3>{APP_NAME}</h3>
+  <p>A knowledge graph grounded atomistic structure builder.</p>
+  <a class="promptlink"
+     href="https://atomistic-structure-builder.streamlit.app/">Application</a>
+</div>
 <main>
   <h1>{APP_NAME}</h1>
   <p class="tagline">A knowledge graph grounded atomistic structure builder,
