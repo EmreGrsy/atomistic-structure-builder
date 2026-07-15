@@ -186,7 +186,7 @@ def build_showcases() -> list[dict]:
         return assemble.sandwich(sheet, water, n=80), None
 
     solid, trans = _cached_case(
-        "graphene_water", {"w": 24, "n": 80, "v": 1}, _graphene)
+        "graphene_water", {"w": 24, "n": 80, "v": 2}, _graphene)
     cases.append(dict(
         title="2D confinement",
         prompt="80 water molecules between two graphene sheets",
@@ -220,7 +220,7 @@ def build_showcases() -> list[dict]:
         return assemble.sandwich(mag, water, top=rut, clearance=3.5, n=100), None
 
     solid, trans = _cached_case(
-        "hetero_sandwich", {"clr": 3.5, "n": 100, "v": 1}, _hetero)
+        "hetero_sandwich", {"clr": 3.5, "n": 100, "v": 2}, _hetero)
     cases.append(dict(
         title="Hetero interface sandwich",
         prompt="water between a magnetite 001 slab and a rutile 110 slab",
