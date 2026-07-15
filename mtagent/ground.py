@@ -294,7 +294,8 @@ def _solute_size(state: dict) -> float:
         if c["builder"] == "nanoparticle":
             d = float(s.get("diameter") or 40.0)
             n = int(s.get("n_particles") or 1)
-            return cluster_extent(d, n, float(s.get("gap") or 10.0)) if n > 1 else d
+            return cluster_extent(d, n, float(s.get("gap") or 10.0),
+                                  str(s.get("lattice") or "sc")) if n > 1 else d
         if c["builder"] == "nanotube":
             return float(int(s.get("length") or 10)) * 2.46
         if c["builder"] == "surface_slab":

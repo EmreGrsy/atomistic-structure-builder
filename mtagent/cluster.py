@@ -11,6 +11,7 @@ packmol is only for filling solvent AROUND a pre-built cluster, never for placin
 """
 from __future__ import annotations
 
+import itertools
 import math
 from pathlib import Path
 
@@ -85,22 +86,43 @@ def lattice_positions(n: int, spacing: float, lattice: str = "sc") -> np.ndarray
     one conventional cell. The selected sites are re-centered on the origin.
     """
     basis, a = _lattice_basis(lattice, spacing)
-    dim = math.ceil((n / len(basis)) ** (1.0 / 3.0)) + 1
+    dim = math.ceil((n / len(basis)) ** (1.0 / 3.0)) + 2
     pts = np.array([(np.array(b) + (i, j, k)) for i in range(dim)
                     for j in range(dim) for k in range(dim) for b in basis],
                    dtype=float)
-    center = pts.mean(axis=0)
-    order = np.argsort(np.linalg.norm(pts - center, axis=1), kind="stable")
-    sites = pts[order[:n]] * a
+    mid = pts.mean(axis=0)
+    # which n-subset is tightest depends on where the probe center sits (on a
+    # lattice site vs between sites): a site-centered sort turns e.g. sc n=8
+    # into a spiky octahedral star instead of the 2x2x2 cube. Try the
+    # half-grid offsets and keep the selection with the smallest spread.
+    best = None
+    for off in itertools.product((0.0, 0.5), repeat=3):
+        order = np.argsort(np.linalg.norm(pts - (mid + np.array(off)), axis=1),
+                           kind="stable")
+        sel = pts[order[:n]]
+        spread = sel.max(axis=0) - sel.min(axis=0)
+        score = (round(float(spread.max()), 6), round(float(spread.sum()), 6),
+                 round(float(np.linalg.norm(
+                     sel - sel.mean(axis=0), axis=1).sum()), 6))
+        if best is None or score < best[0]:
+            best = (score, sel)
+    sites = best[1] * a
     return sites - sites.mean(axis=0)
 
 
-def cluster_extent(diameter: float, n: int, gap: float = 10.0) -> float:
-    """Overall extent of an n-unit cluster (for sizing the solvent box around it)."""
+def cluster_extent(diameter: float, n: int, gap: float = 10.0,
+                   lattice: str = "sc") -> float:
+    """Overall extent of an n-unit cluster (for sizing the solvent box around
+    it) — from the ACTUAL lattice sites, not a cubic-grid overestimate (which
+    oversized solvent boxes around close-packed supercrystals)."""
     if n <= 1:
         return diameter
-    dim = math.ceil(n ** (1.0 / 3.0))
-    return (dim - 1) * (diameter + gap) + diameter
+    try:
+        sites = lattice_positions(int(n), diameter + gap, lattice)
+        return float((sites.max(axis=0) - sites.min(axis=0)).max()) + diameter
+    except Exception:
+        dim = math.ceil(n ** (1.0 / 3.0))
+        return (dim - 1) * (diameter + gap) + diameter
 
 
 def cluster_lt(unit_name: str, sites: np.ndarray, box: np.ndarray) -> str:
@@ -186,7 +208,8 @@ def build_cluster(unit: Atoms, n: int, gap: float = 10.0, name: str = "NP",
                                "unit_diameter": round(dia, 2), "gap": gap,
                                "spacing": round(spacing, 2), "lattice": lattice,
                                "periodic": periodic,
-                               "extent": round(cluster_extent(dia, n, gap), 2)}
+                               "extent": round(cluster_extent(dia, n, gap,
+                                                              lattice), 2)}
     cluster.info["provenance"] = {"source": "moltemplate", "type": "np_cluster",
                                   "n_units": n, "spacing": round(spacing, 2),
                                   "lattice": lattice,
