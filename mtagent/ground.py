@@ -158,6 +158,20 @@ def gaps(state: dict) -> list[Gap]:
 def finalize(state: dict) -> dict:
     """Fill declared defaults + derived values once no gaps remain (deterministic)."""
     st = copy.deepcopy(state)
+    # sandwich slabs follow the docs example convention (thickness 8, vacuum
+    # 12): thinner slabs read better with a film between two surfaces — only
+    # where the user didn't choose values (before the registry defaults fill)
+    sandwich_slabs = set()
+    for r in relations_of(st):
+        if r.get("kind") == "between":
+            sandwich_slabs.add(r.get("host"))
+            sandwich_slabs.add((r.get("params") or {}).get("second_host"))
+    for c in st["constituents"]:
+        if c["key"] in sandwich_slabs and c.get("builder") == "surface_slab":
+            spec = c.setdefault("spec", {})
+            for k, v in (("thickness", 8.0), ("vacuum", 12.0)):
+                if spec.get(k) is None:
+                    spec[k] = v
     key_map = {}
     for c in st["constituents"]:
         key_map[c["key"]] = c["key"] = slug(c["key"])

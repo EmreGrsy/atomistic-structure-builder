@@ -286,6 +286,7 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     _apply_gamma_hint(state, query)
     _apply_nparticles_hint(state, query)
     _strip_uninvited_repeat(state, query)
+    _strip_uninvited_slab_dims(state, query)
     _bulk_vs_slab_hint(state, query)
     return state
 
@@ -505,6 +506,29 @@ def _slab_repeats_of(state: dict) -> dict:
     return {c["key"]: c["spec"].get("repeat")
             for c in state.get("constituents", [])
             if c.get("builder") == "surface_slab" and c["spec"].get("repeat")}
+
+
+def _strip_uninvited_slab_dims(state: dict, text: str) -> None:
+    """The parse LLM copies the catalog DEFAULTS (thickness 10, width 25,
+    vacuum 10) into slab specs the user never mentioned, which downstream
+    can't tell apart from a user's choice (it blocks e.g. the sandwich docs
+    convention thickness 8). Strip any dimension whose number is not literally
+    in the user's message; an explicit 'N Å thick' is set deterministically
+    (the LLM once turned '15 A thick' into 1.5)."""
+    m_thick = re.search(r"(\d+(?:\.\d+)?)\s*(?:Å|A|angstrom)?\s*thick",
+                        text, re.IGNORECASE)
+    for c in state.get("constituents", []):
+        if c.get("builder") != "surface_slab":
+            continue
+        spec = c.get("spec") or {}
+        for k in ("thickness", "width", "vacuum"):
+            v = spec.get(k)
+            if v is None or not _is_number(v):
+                continue
+            if not re.search(r"\b" + re.escape(f"{float(v):g}") + r"\b", text):
+                spec.pop(k)
+        if m_thick and spec.get("thickness") is None:
+            spec["thickness"] = float(m_thick.group(1))
 
 
 def _strip_uninvited_repeat(state: dict, text: str, keep: dict | None = None) -> None:
