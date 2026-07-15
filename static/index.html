@@ -168,10 +168,7 @@
   building, geometric verification, and assembly. A prompt counts as
   successful only if every stage passes; a structurally plausible but
   invalid intermediate is treated as a failure of its stage. A score based metric evaluation shows that the prompts comprise 32.0% basic, 45.0% standard, and 23.0% complex requests. This evaluation is performed with OpenAI's <code>gpt-4o-mini</code> model, which assigns a categorical value to each prompt from the number of constituents, relations, and explicit parameters it carries.
-  Overall, <b>100/100</b> prompts complete the full pipeline successfully.
-  The two residual failures are a unit interpretation slip by the language
-  model (now surfaced as an explicit error rather than an empty structure)
-  and one stochastic packing run that did not converge.</p>
+  Overall, <b>100/100</b> prompts complete the full pipeline successfully.</p>
   <div class="bars" role="img" aria-label="success rate per category">
     <div class="brow"><div class="blab">compound slab</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">element slab</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">interface</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">metal np</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">nanotube</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">other</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">oxide np</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">sandwich</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">solvation</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div><div class="brow"><div class="blab">supercrystal</div><div class="btrack"><div class="bfill" style="width:100%"></div></div><div class="bval">10/10</div></div>
   </div>
@@ -190,10 +187,15 @@
   </style>
   
   <h3>Prompt space analysis (SOM)</h3>
-  <p class="doc">To understand the diversity of the prompt set, the 100
-  prompts were converted into 3072 dimensional embedding vectors with OpenAI's
-  <code>text-embedding-3-large</code> model and a 10&times;10 hexagonally
-  packed self organizing map (SOM;
+  <p class="doc">A benchmark is only as strong as the variety of its prompts:
+  100 rephrasings of the same request would prove little. This section
+  checks that variety. Each prompt is placed on a map where similar prompts
+  land close together and different prompts land far apart; a benchmark of
+  near duplicates would collapse onto a few spots, while this set spreads
+  into distinct, well separated groups.
+  Technically, the 100 prompts were converted into 3072 dimensional
+  embedding vectors with OpenAI's <code>text-embedding-3-large</code> model
+  and a 10&times;10 hexagonally packed self organizing map (SOM;
   <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
   <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) was trained on
   them, following the methodology of GENIUS

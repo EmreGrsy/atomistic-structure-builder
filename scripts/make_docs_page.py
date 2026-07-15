@@ -282,10 +282,15 @@ def som_section() -> str:
                   ("#efe8d8", "#8a6d3b"), "BMU hit map (prompts per neuron)")
     return f"""
   <h3>Prompt space analysis (SOM)</h3>
-  <p class="doc">To understand the diversity of the prompt set, the 100
-  prompts were converted into 3072 dimensional embedding vectors with OpenAI's
-  <code>text-embedding-3-large</code> model and a 10&times;10 hexagonally
-  packed self organizing map (SOM;
+  <p class="doc">A benchmark is only as strong as the variety of its prompts:
+  100 rephrasings of the same request would prove little. This section
+  checks that variety. Each prompt is placed on a map where similar prompts
+  land close together and different prompts land far apart; a benchmark of
+  near duplicates would collapse onto a few spots, while this set spreads
+  into distinct, well separated groups.
+  Technically, the 100 prompts were converted into 3072 dimensional
+  embedding vectors with OpenAI's <code>text-embedding-3-large</code> model
+  and a 10&times;10 hexagonally packed self organizing map (SOM;
   <a href="https://ieeexplore.ieee.org/document/58325">Kohonen,
   <i>Proceedings of the IEEE</i> 78, 1464 to 1480, 1990</a>) was trained on
   them, following the methodology of GENIUS
@@ -351,10 +356,7 @@ def metrics_section() -> str:
   building, geometric verification, and assembly. A prompt counts as
   successful only if every stage passes; a structurally plausible but
   invalid intermediate is treated as a failure of its stage.{comp_txt}
-  Overall, <b>{total}</b> prompts complete the full pipeline successfully.
-  The two residual failures are a unit interpretation slip by the language
-  model (now surfaced as an explicit error rather than an empty structure)
-  and one stochastic packing run that did not converge.</p>
+  Overall, <b>{total}</b> prompts complete the full pipeline successfully.</p>
   <div class="bars" role="img" aria-label="success rate per category">
     {''.join(rows)}
   </div>
