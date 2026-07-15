@@ -651,14 +651,32 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
     n = int(m.group(1)) if m else None
     lat = re.search(r"\b(fcc|bcc)\b", message, re.IGNORECASE)
     stk = re.search(r"\b([ABC]{4,})\b", message)     # explicit stacking sequence
-    multi = re.search(r"super\s*crystal|super\s*lattice|nanoparticle cluster"
+    # "super..." tolerates typos (supercystall) — with an NP in the spec any
+    # super word means the multi-particle arrangement
+    multi = re.search(r"\bsuper\w+|nanoparticle cluster"
                       r"|cluster of nanoparticles", message, re.IGNORECASE)
+    # a BULK constituent whose material is a PACKING word (bcc/fcc/sc) is the
+    # LLM reifying the arrangement — never a real crystal; treat as multi
+    packing_bulks = set()
+    for c in state.get("constituents", []):
+        if c.get("builder") != "bulk":
+            continue
+        spec = c.get("spec") or {}
+        mat = str(spec.get("material") or spec.get("element") or c["key"])
+        pm = re.search(r"\b(sc|fcc|bcc)\b", mat, re.IGNORECASE)
+        if pm:
+            packing_bulks.add(c["key"])
+            multi = multi or pm
+            lat = lat or (pm if pm.group(1).lower() != "sc" else lat)
+    # one full conventional cell per lattice = a TRUE periodic supercrystal
+    lat_word = (lat.group(1).lower() if lat else "sc") if lat or multi else None
+    default_n = {"bcc": 2, "sc": 8}.get(lat_word or "", 4)
     for c in nps:
         if n and n >= 2:
             c["spec"]["n_particles"] = n
         elif multi and int(c["spec"].get("n_particles") or 1) < 2:
             # stacking sequences default to 3 particles per layer
-            c["spec"]["n_particles"] = 3 * len(stk.group(1)) if stk else 4
+            c["spec"]["n_particles"] = 3 * len(stk.group(1)) if stk else default_n
         if stk and (multi or (n and n >= 2)):
             c["spec"]["lattice"] = stk.group(1)
         elif lat and (multi or (n and n >= 2)):
@@ -666,9 +684,10 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
     if multi or (n and n >= 2):
         # "supercrystal"/"cluster" describes the NP arrangement — the LLM
         # sometimes also invents it as a SEPARATE bulk constituent
-        bogus = {c["key"] for c in state.get("constituents", [])
-                 if c.get("builder") == "bulk" and re.search(
-                     r"super|cluster|lattice|assembl", c["key"], re.IGNORECASE)}
+        bogus = packing_bulks | {
+            c["key"] for c in state.get("constituents", [])
+            if c.get("builder") == "bulk" and re.search(
+                r"super|cluster|lattice|assembl", c["key"], re.IGNORECASE)}
         if bogus:
             state["constituents"] = [c for c in state["constituents"]
                                      if c["key"] not in bogus]
