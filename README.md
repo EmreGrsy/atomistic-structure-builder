@@ -15,8 +15,8 @@ use, and gated error recovery with verifiable yes or no rewards.
 
 The app serves its own documentation at `/app/static/index.html`, a self
 building page with six cached live examples and the benchmark section
-(98 of 100 full pipeline prompts pass; a self organizing map analysis of the
-failure space is included).
+(100 of 100 full pipeline prompts pass; a self organizing map analysis of
+the prompt space is included).
 
 ## The KG first backbone
 
