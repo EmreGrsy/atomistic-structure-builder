@@ -155,6 +155,18 @@ def _sanitize(state: dict) -> dict:
             # the string marker the template understands
             if k.startswith("gamma_") and v is None:
                 c["spec"][k] = "none"
+            # LLM placeholder for a material the user never named — drop it
+            # so the gap system ASKS instead of the build erroring on the
+            # literal string "unknown"
+            if k in ("material", "element") and str(v).strip().lower() in (
+                    "unknown", "unspecified", "any", "n/a", "na", "tbd",
+                    "none", "null", "?", ""):
+                c["spec"].pop(k)
+                continue
+            # packing lattice is case insensitive (BCC == bcc), but explicit
+            # stacking sequences (ABCABCABAB) keep their case
+            if k == "lattice" and str(v).lower() in ("sc", "fcc", "bcc"):
+                c["spec"][k] = str(v).lower()
             # cubic symmetry: (001)=(010)=(100) and (101)=(011)=(110) — an LLM
             # edit like "gamma_001: 2.0" must land on the canonical family
             # param, not invent a conflicting fourth facet
@@ -615,8 +627,8 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
     n = int(m.group(1)) if m else None
     lat = re.search(r"\b(fcc|bcc)\b", message, re.IGNORECASE)
     stk = re.search(r"\b([ABC]{4,})\b", message)     # explicit stacking sequence
-    multi = re.search(r"\bsupercrystal|superlattice|nanoparticle cluster"
-                      r"|cluster of nanoparticles\b", message, re.IGNORECASE)
+    multi = re.search(r"super\s*crystal|super\s*lattice|nanoparticle cluster"
+                      r"|cluster of nanoparticles", message, re.IGNORECASE)
     for c in nps:
         if n and n >= 2:
             c["spec"]["n_particles"] = n
