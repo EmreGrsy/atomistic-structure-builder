@@ -121,7 +121,8 @@ _TEMPLATE = Template("""<!DOCTYPE html>
     const gizmo = document.getElementById("gizmo");
     function drawGizmo(q) {
       const ctx = gizmo.getContext("2d");
-      const c = 52, L = 26, AH = 6;
+      const c = 52, L = 18, LT = 42, AH = 6;   // short arrows, labels kept
+                                               // out at LT for a clear gap
       ctx.clearRect(0, 0, 104, 104);
       const proj = AXES.map(([lab, v]) => [lab, rotv(q, v)])
                        .sort((p, r) => p[1][2] - r[1][2]);   // painter: back first
@@ -130,7 +131,7 @@ _TEMPLATE = Template("""<!DOCTYPE html>
         const len2d = Math.hypot(x - c, y - c);
         ctx.strokeStyle = "$text"; ctx.fillStyle = "$text";
         ctx.lineWidth = 2; ctx.lineCap = "round";
-        ctx.globalAlpha = 0.5 * (0.45 + 0.55 * (r[2] + 1) / 2);  // faint, depth cued
+        ctx.globalAlpha = 0.45 + 0.55 * (r[2] + 1) / 2;      // depth cued
         if (len2d < 4) {                                     // points at the viewer
           ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
         } else {
@@ -144,7 +145,7 @@ _TEMPLATE = Template("""<!DOCTYPE html>
         }
         if (lab) {
           ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
-          ctx.fillText(lab, c + (L+16)*r[0], c - (L+16)*r[1] + 3);
+          ctx.fillText(lab, c + LT*r[0], c - LT*r[1] + 3);
         }
       }
       ctx.globalAlpha = 1;

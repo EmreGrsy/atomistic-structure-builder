@@ -23,7 +23,7 @@ APP_VERSION = "0.1.0"
 # viewer style stays warm (see mtagent/viewer.py); the PAGE itself follows
 # the app's default Streamlit palette
 BG, TEXT, CELLC, OUTLINE = "#e9eaec", "#3d4148", "#8f939b", 0.10
-PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#151a22", "#e9edf4", "#39435a", "#222834"
+PAGE_BG, PAGE_TEXT, PAGE_LINE, CARD_BG = "#222834", "#e9edf4", "#39435a", "#151a22"
 STICK, VDW_FACTOR, OPACITY = 0.12, 0.44, 0.5
 # element color overrides (user's publication convention); others use Jmol
 CUSTOM_COLORS = {"Fe": "#3565c0"}
