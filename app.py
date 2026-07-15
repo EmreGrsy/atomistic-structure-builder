@@ -343,14 +343,14 @@ def build_all() -> None:
 with st.sidebar:
     st.markdown(f"### {APP_NAME}")
     st.markdown("A knowledge graph grounded atomistic structure builder.")
-    st.link_button("Documentation and examples",
+    st.link_button("Overview and examples",
                    "https://emregrsy.github.io/atomistic-structure-builder/",
                    use_container_width=True)
 
 if not SS.messages:
     st.markdown(
-        "Builds geometries of atomistic structures from plain language. "
-        "Requests are grounded in knowledge graphs of "
+        "Builds atomistic structures from plain language. Results are "
+        "grounded in knowledge graphs generated from "
         "[ASE](https://wiki.fysik.dtu.dk/ase/), "
         "[packmol](https://m3g.github.io/packmol/), "
         "[Moltemplate](https://www.moltemplate.org/) and "
