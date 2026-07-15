@@ -160,39 +160,4 @@ rebuild):
 python scripts/make_docs_page.py
 ```
 
-## Deployment
-
-The app is a single Streamlit process with no database; state lives in the
-session. What a server deployment needs:
-
-- the conda environment above (packmol and moltemplate.sh must be on PATH),
-- `.streamlit/secrets.toml` with the OpenAI key (never committed),
-- a headless launch, for example:
-
-```bash
-OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-  streamlit run app.py --server.port 8501 \
-  --server.fileWatcherType none --server.headless true
-```
-
-- a reverse proxy (nginx or similar) with TLS in front of the port, and
-  websocket forwarding enabled (Streamlit needs it).
-
-### Free hosting (Streamlit Community Cloud)
-
-The repo is set up for the free tier: `packages.txt` installs the packmol
-binary from apt and `requirements.txt` covers everything else (moltemplate
-is pip). Steps:
-
-1. Push this repo to GitHub.
-2. On https://share.streamlit.io sign in with GitHub and create a new app
-   from the repo, main file `app.py`, Python 3.11.
-3. In the app settings under Secrets paste the content of your
-   `.streamlit/secrets.toml` (the OPENAI_API_KEY line). Secrets never live
-   in the repo.
-
-Free tier caveats: modest CPU and memory (large builds run slower and the
-packmol timeout matters), the app sleeps after inactivity and wakes on the
-next visit, and the machine's disk is ephemeral, so nothing durable can be
-stored on it. For heavier use, the same repo runs on any server with the
-conda environment (see above) or in a Docker image.
+Deployment notes live in `DEPLOY.md`; the roadmap in `ROADMAP.md`.
