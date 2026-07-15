@@ -307,6 +307,7 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     _strip_uninvited_repeat(state, text)
     _strip_uninvited_slab_dims(state, text)
     _drop_uninvited_count(state, text)
+    _apply_np_size_hint(state, text)
     _bulk_vs_slab_hint(state, text)
     return state
 
@@ -422,6 +423,7 @@ def respond(state: dict, message: str, gap: Gap | None = None, context: str = ""
         _strip_uninvited_repeat(new_state, text,
                                 keep=_slab_repeats_of(state))
         _drop_uninvited_count(new_state, text, old_state=state)
+        _apply_np_size_hint(new_state, text, bare=False)
     return {"intent": intent, "answer": str(out.get("answer") or ""),
             "state": new_state, "note": note}
 
@@ -544,6 +546,42 @@ def _slab_repeats_of(state: dict) -> dict:
             for c in state.get("constituents", [])
             if c.get("builder") in ("surface_slab", "nanoparticle")
             and c["spec"].get("repeat")}
+
+
+def _apply_np_size_hint(state: dict, text: str, bare: bool = True) -> None:
+    """Deterministic nanoparticle size: the LLM slips units ('2 nm radius'
+    became diameter=4.0 Angstrom, a 5 atom particle). Read the size straight
+    from the message: radius doubles, nm is 10 Angstrom."""
+    nps = [c for c in state.get("constituents", [])
+           if c.get("builder") == "nanoparticle"]
+    if not nps:
+        return
+    unit_pat = r"(nm|Å|A\b|angstroms?)"
+    m = re.search(r"\b(radius|diameter)\b\s*(?:of\s*)?[:=]?\s*"
+                  r"(\d+(?:\.\d+)?)\s*" + unit_pat, text, re.IGNORECASE)
+    if m:
+        kind, val, unit = m.group(1).lower(), float(m.group(2)), m.group(3)
+    else:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*" + unit_pat +
+                      r"\s*\b(radius|diameter)\b", text, re.IGNORECASE)
+        if m:
+            val, unit, kind = float(m.group(1)), m.group(2), m.group(3).lower()
+        elif bare:
+            m = re.search(r"(\d+(?:\.\d+)?)\s*" + unit_pat +
+                          r"\s+(?:\w+\s+){0,2}?"
+                          r"(?:nanoparticles?|particles?|nps?|nanocubes?|"
+                          r"nanospheres?|cubes?|spheres?)\b",
+                          text, re.IGNORECASE)
+            if not m:
+                return
+            val, unit, kind = float(m.group(1)), m.group(2), "diameter"
+        else:
+            return
+    d = val * (10.0 if unit.lower() == "nm" else 1.0)
+    if kind == "radius":
+        d *= 2.0
+    for c in nps:
+        c["spec"]["diameter"] = d
 
 
 def _drop_uninvited_count(state: dict, text: str,

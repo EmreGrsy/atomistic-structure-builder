@@ -157,6 +157,11 @@ def _t_nanoparticle(spec: dict) -> str:
     spec = dict(spec)
     normalize_material(spec)
     d = _num(spec.get("diameter"), 40.0)
+    if d < 8.0:
+        raise ValueError(
+            f"diameter {d:g} Å is smaller than one unit cell, so the carve "
+            "keeps almost no atoms. Sizes are in Å (1 nm = 10 Å); a particle "
+            "with a 2 nm radius is diameter=40.")
     shape = (spec.get("shape") or ("wulff" if _is_oxide(spec) else "sphere")).lower()
     lines: list[str] = []
     if _is_oxide(spec):
