@@ -215,7 +215,9 @@ def finalize(state: dict) -> dict:
             continue    # cell SHAPES differ (e.g. hexagonal vs square) — no
             #             repeat can fix that; sandwich() raises the guiding error
         mx = _match_repeats(u1[0], u2[0])
-        my = _match_repeats(u1[1], u2[1])
+        # square-ish cells render best: aim the y match at the x length
+        tgt = max(u1[0] * mx[0], u2[0] * mx[1]) if mx else None
+        my = _match_repeats(u1[1], u2[1], target_len=tgt)
         if mx and my:
             c1["spec"]["repeat"] = f"{mx[0]}x{my[0]}"
             c2["spec"]["repeat"] = f"{mx[1]}x{my[1]}"
@@ -241,22 +243,27 @@ def _slab_inplane_unit(spec: dict) -> tuple[float, float, float] | None:
 
 
 def _match_repeats(u1: float, u2: float, max_rep: int = 12,
-                   max_len: float = 45.0,
-                   min_len: float = 20.0) -> tuple[int, int] | None:
-    """Repeat counts (n1, n2) with n1*u1 ≈ n2*u2: minimal strain, then a cell
-    that reaches min_len (a matched 1 repeat strip is a useless sliver even at
-    zero strain), then minimal size — under the sandwich's 12% strain cap and
-    a size budget."""
+                   max_len: float = 45.0, min_len: float = 20.0,
+                   target_len: float | None = None) -> tuple[int, int] | None:
+    """Repeat counts (n1, n2) with n1*u1 ≈ n2*u2, under the sandwich's 12%
+    strain cap and a size budget. Any strain under 8% counts as equally fine;
+    within that the cell must reach min_len (a matched 1 repeat strip is a
+    useless sliver even at zero strain), then sit closest to target_len (so
+    x and y come out square-ish, which renders best), then smallest, then
+    lowest strain as the tie break."""
     best = None
     for n1 in range(1, max_rep + 1):
         for n2 in range(1, max_rep + 1):
             L1, L2 = u1 * n1, u2 * n2
-            if max(L1, L2) > max_len:
+            size = max(L1, L2)
+            if size > max_len:
                 continue
-            strain = abs(L1 - L2) / max(L1, L2)
+            strain = abs(L1 - L2) / size
             if strain > 0.12:
                 continue
-            score = (round(strain, 3), max(L1, L2) < min_len, max(L1, L2))
+            score = (strain > 0.08, size < min_len,
+                     abs(size - target_len) if target_len else size,
+                     round(strain, 3))
             if best is None or score < best[0]:
                 best = (score, n1, n2)
     return (best[1], best[2]) if best else None
