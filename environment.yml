@@ -1,0 +1,19 @@
+# Reproducible conda environment for the Atomistic Structure Builder.
+#   conda env create -f environment.yml
+#   conda activate mdagent
+name: mdagent
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - packmol            # compiled binary, not available on pip
+  - pip
+  - pip:
+      - ase>=3.29
+      - scipy>=1.17
+      - numpy
+      - requests
+      - moltemplate
+      - streamlit>=1.59
+      - openai>=2.0
+      - pytest

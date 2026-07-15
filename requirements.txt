@@ -1,13 +1,14 @@
-# Core Phase 0 (deterministic spine)
-ase>=3.23
+# Atomistic Structure Builder, pip requirements.
+# packmol is a compiled binary and is NOT pip installable: install it from
+# conda forge (see environment.yml) or build it from source and put it on PATH.
+
+ase>=3.29
+scipy>=1.17
+numpy
 requests
-moltemplate            # provides moltemplate.sh (LAMMPS data file generation)
-# packmol is installed as a binary via conda (see environment / README)
+moltemplate            # provides moltemplate.sh
+streamlit>=1.59
+openai>=2.0
 
-# Viewer: we render with 3Dmol.js via CDN (zero-install). py3Dmol optional for notebooks.
-py3Dmol
-
-# Later phases
-# streamlit
-# langgraph
-# openai
+# development
+pytest
