@@ -343,13 +343,18 @@ def build_all() -> None:
 with st.sidebar:
     st.markdown(f"### {APP_NAME}")
     st.markdown("A knowledge graph grounded atomistic structure builder.")
-    st.link_button("Documentation and examples", "/app/static/index.html",
+    st.link_button("Documentation and examples",
+                   "https://emregrsy.github.io/atomistic-structure-builder/",
                    use_container_width=True)
 
 if not SS.messages:
     st.markdown(
         '<div style="background:#222834; border:1px solid #39435a; '
         'border-radius:10px; padding:14px 18px; font-size:15px;">'
+        'Builds atomistic systems from plain language. Requests are grounded '
+        'in knowledge graphs of ASE, packmol, Moltemplate and PubChem, so '
+        'every build runs real, validated code, and the code you see is the '
+        'code that runs.<br><br>'
         'Tell me what to build, e.g. <i>"a carbon nanotube with methanol '
         'inside"</i> or <i>"a 4 nm magnetite nanoparticle in water"</i>. '
         'You immediately get the suggested build code for every constituent, '
