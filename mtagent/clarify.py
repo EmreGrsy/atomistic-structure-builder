@@ -22,7 +22,10 @@ _STATE_SHAPE = """Return ONLY JSON of this exact shape:
                    "spec": {<only fields the text explicitly determines>}}],
  "relations": [{"kind": "<relation>", "host": "<key>", "guest": "<key>",
                 "params": {}}, ...] (empty list if none stated),
- "summary": "<one short sentence restating the structure>"}
+ "summary": "<one short sentence restating the structure>",
+ "normalized_query": "<the user's message restated verbatim in clean form:
+  typos fixed, canonical vocabulary (supercrystal, fcc/bcc, gamma, Miller
+  indices), sizes with units in Angstrom — do NOT add or drop information>"}
 Each guest gets its OWN entry in "relations" (e.g. a slab coated with oleic acid AND
 30 water molecules = two entries with the same host). Adding another molecule to an
 existing system = APPEND a relation entry, never replace the existing ones."""
@@ -73,6 +76,19 @@ relation.host/guest pointing at those keys. If the user accepts a stated default
 set that default value. Do not change anything the user didn't address.
 Rules: 1 nm = 10 Angstrom; diameter = 2 * radius.
 {_STATE_SHAPE}"""
+
+
+def _with_normalized(message: str, *containers) -> str:
+    """Raw message + the LLM's clean restatement (normalized_query), so the
+    deterministic hints survive typos (supercystall, gama...) while every fix
+    still goes through a code gate. The restatement never replaces the raw
+    text — both are matched."""
+    for d in containers:
+        if isinstance(d, dict):
+            nq = d.get("normalized_query") or d.get("normalized_message")
+            if isinstance(nq, str) and nq.strip():
+                return message + "\n" + nq.strip()
+    return message
 
 
 def _sanitize_relation(rel, cs: list, keys: list) -> dict | None:
@@ -282,12 +298,15 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     if not have_openai_key():
         return _fallback_parse(query)
     state = chat_json([{"role": "user", "content": query}], _parse_system(), model=model)
+    # the deterministic hints match on the raw text AND the LLM's clean
+    # restatement — typo robustness without giving up the code gates
+    text = _with_normalized(query, state)
     state = _sanitize(state)
-    _apply_gamma_hint(state, query)
-    _apply_nparticles_hint(state, query)
-    _strip_uninvited_repeat(state, query)
-    _strip_uninvited_slab_dims(state, query)
-    _bulk_vs_slab_hint(state, query)
+    _apply_gamma_hint(state, text)
+    _apply_nparticles_hint(state, text)
+    _strip_uninvited_repeat(state, text)
+    _strip_uninvited_slab_dims(state, text)
+    _bulk_vs_slab_hint(state, text)
     return state
 
 
@@ -323,7 +342,10 @@ def apply_answer(state: dict, answer: str, gap: Gap | None = None,
 _ROUTE_SHAPE = """Return ONLY JSON of this exact shape:
 {"intent": "edit" | "question" | "build" | "new",
  "answer": "<for question: a short, direct, factual answer; else ''>",
- "state": <for edit: the full updated spec (same shape as the one given); else null>}"""
+ "state": <for edit: the full updated spec (same shape as the one given); else null>,
+ "normalized_query": "<the user's message restated verbatim in clean form: typos
+  fixed, canonical vocabulary (supercrystal, fcc/bcc, gamma, Miller indices),
+  sizes with units in Angstrom — do NOT add or drop information>"}"""
 
 
 def _respond_system() -> str:
@@ -387,15 +409,16 @@ def respond(state: dict, message: str, gap: Gap | None = None, context: str = ""
         intent = "new"
     new_state, note = state, None
     if intent == "edit":
+        text = _with_normalized(message, out.get("state") or {}, out)
         new_state = _sanitize(out.get("state") or {})
         if not new_state["constituents"]:
             new_state = state
-        _apply_repeat_hint(new_state, message)
-        _apply_facet_hint(new_state, message)
-        note = _apply_gamma_hint(new_state, message)
-        _apply_nparticles_hint(new_state, message)
-        _apply_add_count_hint(state, new_state, message)
-        _strip_uninvited_repeat(new_state, message,
+        _apply_repeat_hint(new_state, text)
+        _apply_facet_hint(new_state, text)
+        note = _apply_gamma_hint(new_state, text)
+        _apply_nparticles_hint(new_state, text)
+        _apply_add_count_hint(state, new_state, text)
+        _strip_uninvited_repeat(new_state, text,
                                 keep=_slab_repeats_of(state))
     return {"intent": intent, "answer": str(out.get("answer") or ""),
             "state": new_state, "note": note}
@@ -429,12 +452,13 @@ def _apply_gamma_hint(state: dict, message: str) -> str | None:
     the message and set the canonical family param directly. Returns a note
     for the user when the index was an alias or the value was already set."""
     val_pat = r"(zero|none|off|\d+(?:\.\d+)?)"
-    hits = re.findall(
-        r"\bgamma\b[^\d]{0,12}?\(?(\d{3})\)?(?:\s*(?:to|=|:|is))?\s*" + val_pat,
-        message, re.IGNORECASE)
+    hits = re.findall(                # gaps must stay on ONE line: the hint
+        r"\bgamma\b[^\d\n]{0,12}?"    # text is raw + normalized restatement,
+        r"\(?(\d{3})\)?(?:\s*(?:to|=|:|is))?[ \t]*" + val_pat,
+        message, re.IGNORECASE)       # and cross-line pairing mismatches
     hits += re.findall(
-        r"\(?(\d{3})\)?[^\d]{0,12}?\b(?:gamma|surface energy)\b"
-        r"(?:\s*(?:to|=|:|is))?\s*" + val_pat,
+        r"\(?(\d{3})\)?[^\d\n]{0,12}?\b(?:gamma|surface energy)\b"
+        r"(?:\s*(?:to|=|:|is))?[ \t]*" + val_pat,
         message, re.IGNORECASE)
     if re.search(r"\b(?:gamma|facet|surface)\b", message, re.IGNORECASE):
         hits += [(m, "none") for m in re.findall(
@@ -464,7 +488,7 @@ def _apply_gamma_hint(state: dict, message: str) -> str | None:
                     and abs(float(old) - value) < 1e-9:
                 notes.append(f"{param} is already {value:g}, nothing changed.")
             c["spec"][param] = value
-    return " ".join(notes) or None
+    return " ".join(dict.fromkeys(notes)) or None
 
 
 def _apply_facet_hint(state: dict, message: str) -> None:
@@ -647,7 +671,9 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
                   message, re.IGNORECASE)
     if not m:
         m = re.search(r"\b(?:cluster|supercrystal|superlattice|assembly)\s+"
-                      r"(?:of|with|made of)\s+(\d+)\b", message, re.IGNORECASE)
+                      r"(?:of|with|made of)\s+(\d+)\b"
+                      r"(?!\s*(?:nm|Å|A\b|angstrom))",  # "made of 3 nm NPs"
+                      message, re.IGNORECASE)           # = a SIZE, not a count
     n = int(m.group(1)) if m else None
     lat = re.search(r"\b(fcc|bcc)\b", message, re.IGNORECASE)
     stk = re.search(r"\b([ABC]{4,})\b", message)     # explicit stacking sequence
@@ -671,7 +697,14 @@ def _apply_nparticles_hint(state: dict, message: str) -> None:
     # one full conventional cell per lattice = a TRUE periodic supercrystal
     lat_word = (lat.group(1).lower() if lat else "sc") if lat or multi else None
     default_n = {"bcc": 2, "sc": 8}.get(lat_word or "", 4)
+    # sizes ("3 nm", "30 Å") are NOT counts — the LLM regularly copies the nm
+    # number into n_particles
+    sizes = {float(v) for v in re.findall(
+        r"\b(\d+(?:\.\d+)?)\s*(?:nm|Å|A\b|angstrom)", message, re.IGNORECASE)}
     for c in nps:
+        cur = c["spec"].get("n_particles")
+        if n is None and _is_number(cur) and float(cur) in sizes:
+            c["spec"]["n_particles"] = 1        # size mistaken for a count
         if n and n >= 2:
             c["spec"]["n_particles"] = n
         elif multi and int(c["spec"].get("n_particles") or 1) < 2:
