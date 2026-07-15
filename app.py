@@ -349,10 +349,13 @@ with st.sidebar:
 
 if not SS.messages:
     st.markdown(
-        "Builds atomistic systems from plain language. Requests are grounded "
-        "in knowledge graphs of ASE, packmol, Moltemplate and PubChem, so "
-        "every build runs real, validated code, and the code you see is the "
-        "code that runs.")
+        "Builds geometries of atomistic structures from plain language. "
+        "Requests are grounded in knowledge graphs of "
+        "[ASE](https://wiki.fysik.dtu.dk/ase/), "
+        "[packmol](https://m3g.github.io/packmol/), "
+        "[Moltemplate](https://www.moltemplate.org/) and "
+        "[PubChem](https://pubchem.ncbi.nlm.nih.gov/), so every build runs "
+        "real, validated code, and the code you see is the code that runs.")
     st.markdown(
         '<div style="background:#222834; border:1px solid #39435a; '
         'border-radius:10px; padding:14px 18px; font-size:15px;">'
