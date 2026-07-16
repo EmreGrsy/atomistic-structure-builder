@@ -546,10 +546,16 @@ if prompt:
             if r["intent"] == "build":
                 build_all()
     except Exception as e:
+        # the builders refuse impossible asks with an explanation (a guest too
+        # big for a MOF's cages, a Wulff carve with one facet left). Show it:
+        # the reason is the useful part, the traceback is for when it is not.
+        why = " ".join(str(e).split())[:500]
         SS.messages.append({"role": "assistant",
-                            "content": f"That failed: **{type(e).__name__}** — full "
-                                       "error below (copy button in the top-right of the "
-                                       "box). You can adjust and try again.",
+                            "content": f"That failed: **{type(e).__name__}**."
+                                       + (f" {why}" if why else "")
+                                       + "\n\nThe full error is below (copy button in "
+                                       "the top-right of the box). You can adjust and "
+                                       "try again.",
                             "error": traceback.format_exc()})
     st.rerun()
 

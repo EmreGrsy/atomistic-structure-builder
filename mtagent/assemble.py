@@ -196,6 +196,62 @@ def _image_shell(host: Atoms, margin: float) -> Atoms:
                  positions=np.vstack(keep_p))
 
 
+def guest_extents_A(guest: Atoms) -> np.ndarray:
+    """The guest's physical size along its own principal axes, vdW included.
+
+    Sorted ascending, so [0] is the thinnest way through a window and [2] is
+    the longest span that has to fit in a cage.
+    """
+    from ase.data import vdw_radii, atomic_numbers
+
+    p = guest.get_positions() - guest.get_positions().mean(axis=0)
+    if len(guest) == 1:
+        r = _vdw_radius(guest.get_chemical_symbols()[0])
+        return np.array([2 * r] * 3)
+    # full_matrices keeps all THREE axes: a diatomic spans only two, and a
+    # planar ring only two, but they are still 3D objects once vdW is added
+    axes = np.linalg.svd(p, full_matrices=True)[2]
+    proj = p @ axes.T
+    r = np.array([_vdw_radius(s) for s in guest.get_chemical_symbols()])
+    ext = (proj + r[:, None]).max(axis=0) - (proj - r[:, None]).min(axis=0)
+    return np.sort(ext)
+
+
+def _vdw_radius(symbol: str) -> float:
+    from ase.data import vdw_radii, atomic_numbers
+    r = vdw_radii[atomic_numbers[symbol]]
+    return float(r) if not np.isnan(r) else 1.7
+
+
+def _check_guest_fits(host: Atoms, guest: Atoms, name: str) -> None:
+    """Refuse a guest that cannot be in the cages at any count.
+
+    The framework's own catalog entry already knows its cage size, so say so
+    up front: packmol would otherwise grind through a long search and then
+    advise trying fewer, which is nonsense when the honest answer is never.
+
+    Only the CAGE is checked, deliberately. The window is a kinetic question,
+    not a geometric one: ZIF-8's linkers swing open, so molecules well past
+    its 3.4 A crystallographic aperture (methanol, benzene, hexane) do adsorb
+    in real samples. Refusing or warning on window size would state a physical
+    claim this agent cannot back with geometry.
+    """
+    prov = host.info.get("provenance", {})
+    cage = prov.get("pore_diameter_A")
+    if not cage:
+        return
+    d = guest_extents_A(guest)
+    if d[2] <= cage:
+        return
+    label = str(prov.get("material", "the framework")).split(" (")[0]
+    raise ValueError(
+        f"{name or 'that guest'} is {d[2]:.1f} A along its longest axis and "
+        f"the cages of {label} are about {cage} A across, so it does not fit "
+        "inside the framework at any count, and packing fewer will not help. "
+        f"{label} holds small guests: water, CO2, methanol, ethanol, benzene. "
+        "A molecule this size needs a framework with larger pores.")
+
+
 def fill_pores(host: Atoms, guest: Atoms, n: int | None = None,
                density: float | None = None, tolerance: float = 2.0,
                workdir: str | Path = "data/work/pores",
@@ -238,6 +294,7 @@ def fill_pores(host: Atoms, guest: Atoms, n: int | None = None,
             "pores may be too narrow for this guest.")
 
     name = str(guest.info.get("provenance", {}).get("query", "")).lower()
+    _check_guest_fits(host, guest, name)
     if n is None:
         rho = density or SOLVENT_DENSITY.get(name, 0.8)
         molar = float(guest.get_masses().sum())
@@ -269,9 +326,13 @@ def fill_pores(host: Atoms, guest: Atoms, n: int | None = None,
     proc = subprocess.run([packmol], stdin=inp.open(), cwd=work,
                           capture_output=True, text=True, timeout=timeout)
     if not out_xyz.exists() or "Success" not in proc.stdout:
+        why = (f"A smaller count will fit." if n > 1 else
+               f"Even a single one does not fit: {name or 'the guest'} is "
+               f"{guest_extents_A(guest)[2]:.1f} A across and these pores are "
+               "too tight for it.")
         raise RuntimeError(
-            f"packmol could not fit {n} {name or 'guest'} into the pores. A "
-            f"smaller count will fit.\n{proc.stdout[-800:]}")
+            f"packmol could not fit {n} {name or 'guest'} into the pores. "
+            f"{why}\n{proc.stdout[-800:]}")
 
     packed = read(str(out_xyz))
     keep = list(range(len(host))) + list(range(len(walls), len(packed)))
@@ -288,6 +349,7 @@ def fill_pores(host: Atoms, guest: Atoms, n: int | None = None,
         "free_volume_A3": round(free, 1),
         "guests_per_cell": round(n / max(1, np.prod(prov.get("repeat", [1]))), 2),
         "window_A": prov.get("window_A"),
+        "guest_size_A": round(float(guest_extents_A(guest)[2]), 1),
     }
     return loaded
 

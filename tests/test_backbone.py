@@ -172,6 +172,21 @@ def test_fill_pores_puts_guests_in_the_pores():
     assert verify_atoms(loaded).passed
 
 
+def test_guest_too_big_for_the_cages_is_refused():
+    """A 17 A molecule in an 11.6 A cage is impossible at any count: say so up
+    front rather than let packmol grind and then advise packing fewer."""
+    from ase import Atoms
+    from mtagent.assemble import fill_pores, guest_extents_A
+
+    host = run_snippet(BUILDERS["mof"].template({"name": "ZIF-8"}))
+    rod = Atoms("C" * 12,                     # 18 A of carbon, cage is 11.6 A
+                positions=[[1.5 * i, 0, 0] for i in range(12)])
+    with pytest.raises(ValueError, match="does not fit inside the framework"):
+        fill_pores(host, rod, n=1)
+    # a diatomic spans only two principal axes; it still has three extents
+    assert len(guest_extents_A(Atoms("N2", positions=[[0, 0, 0], [0, 0, 1.1]]))) == 3
+
+
 @pytest.mark.skipif(shutil.which("moltemplate.sh") is None,
                     reason="moltemplate not installed")
 def test_cluster_via_moltemplate_gate1_gate2():
