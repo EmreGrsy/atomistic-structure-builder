@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mtagent import clarify, ground
 from mtagent.assemble import RELATIONS, combine_template, fill_inside
 from mtagent.execute import run_snippet
+from mtagent.packing import find_packmol
 from mtagent.registry import BUILDERS
 from mtagent.verify import verify_atoms
 
@@ -127,7 +128,7 @@ def test_execute_nanotube_template_and_gate3():
 
 # --------------------------- assembly (external tools) -------------------------
 
-@pytest.mark.skipif(shutil.which("packmol") is None, reason="packmol not installed")
+@pytest.mark.skipif(find_packmol() is None, reason="packmol not installed")
 def test_fill_inside_tube():
     from ase import Atoms
     host = run_snippet(BUILDERS["nanotube"].template({"n": 8, "m": 8, "length": 6}))
@@ -135,6 +136,40 @@ def test_fill_inside_tube():
     filled = fill_inside(host, guest, n=4)
     assert len(filled) == len(host) + 4
     assert verify_atoms(filled).passed
+
+
+def test_mof_cell_is_the_published_framework():
+    """The bundled CIF is ground truth: if it drifts, every MOF build is wrong."""
+    atoms = run_snippet(BUILDERS["mof"].template({"name": "ZIF-8"}))
+    assert atoms.get_chemical_formula() == "C96H120N48Zn12"   # Park, PNAS 2006
+    assert len(atoms) == 276 and all(atoms.get_pbc())
+    assert abs(atoms.cell.lengths()[0] - 16.991) < 0.01
+    assert verify_atoms(atoms).passed
+
+
+def test_mof_slab_and_nanoparticle_are_refused():
+    """Cutting a MOF would slice its linkers — say so, do not build a wreck."""
+    for builder, spec in (("surface_slab", {"element": "ZIF-8", "miller": "110"}),
+                          ("nanoparticle", {"material": "zif-8", "diameter": 40,
+                                            "shape": "sphere"})):
+        with pytest.raises(ValueError, match="metal-organic framework"):
+            BUILDERS[builder].template(spec)
+
+
+@pytest.mark.skipif(find_packmol() is None, reason="packmol not installed")
+def test_fill_pores_puts_guests_in_the_pores():
+    from mtagent.assemble import fill_pores
+    from ase import Atoms
+
+    host = run_snippet(BUILDERS["mof"].template({"name": "ZIF-8"}))
+    guest = Atoms("Ne", positions=[[0, 0, 0]])
+    loaded = fill_pores(host, guest, n=8)
+    assert len(loaded) == len(host) + 8
+    assert (loaded.cell.lengths() == host.cell.lengths()).all()   # cell kept
+    d = loaded.get_all_distances(mic=True)
+    # guests clear the framework AND its periodic images, or they are in a wall
+    assert d[len(host):, :len(host)].min() > 1.9
+    assert verify_atoms(loaded).passed
 
 
 @pytest.mark.skipif(shutil.which("moltemplate.sh") is None,

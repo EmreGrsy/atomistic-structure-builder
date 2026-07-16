@@ -371,6 +371,11 @@ def display_name(key: str, atoms) -> str:
         if prov.get("repeat"):
             name += f" {prov['repeat'][0]}×{prov['repeat'][1]}"
         return name
+    if prov.get("type") == "mof":
+        rep = prov.get("repeat") or [1, 1, 1]
+        name = str(prov.get("material") or key).split(" (")[0]
+        return name if rep == [1, 1, 1] else \
+            f"{name} {rep[0]}×{rep[1]}×{rep[2]}"
     if prov.get("type") == "np_cluster":
         lat = prov.get("lattice", "sc")
         return f"{_nice_key(key)} supercrystal ({lat}, {prov.get('n_units')} NPs)"

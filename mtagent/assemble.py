@@ -67,6 +67,12 @@ def fill_inside(host: Atoms, guest: Atoms, n: int | None = None, clearance: floa
     if packmol is None:
         raise RuntimeError("packmol not found on PATH")
 
+    if is_framework(host):
+        # a MOF's pores are the whole cell, not a bounding box: shrinking the
+        # box would seal the borders and lose most of the pore network
+        return fill_pores(host, guest, n=n, density=density,
+                          tolerance=tolerance, workdir=workdir, timeout=timeout)
+
     host = _centered(host)
     p = host.get_positions()
     lo, hi = p.min(axis=0), p.max(axis=0)
@@ -127,6 +133,163 @@ def fill_inside(host: Atoms, guest: Atoms, n: int | None = None, clearance: floa
                                "cavity": "cylinder" if tubular else "box",
                                "free_volume_A3": round(volume_A3, 1)}
     return filled
+
+
+def is_framework(atoms: Atoms) -> bool:
+    """A porous periodic host (MOF): a filled 3D cell, no vacuum slab gap."""
+    if atoms.cell.volume < 1e-6 or not all(atoms.get_pbc()):
+        return False
+    return atoms.info.get("provenance", {}).get("type") == "mof"
+
+
+def free_volume_A3(host: Atoms, clearance: float = 2.0,
+                   spacing: float = 0.5) -> float:
+    """Volume of the cell where a guest ATOM centre may sit.
+
+    A framework fills most of its own cell, so the cell volume wildly
+    overcounts what a guest can use. This grids the cell and keeps points
+    further than `clearance` from every framework atom centre, counting
+    periodic images so pore space at the borders is measured against the wall
+    next door rather than empty space.
+
+    `clearance` is packmol's tolerance (a centre-to-centre distance), so this
+    measures the same space packmol will actually pack into. It is a packing
+    number, not the adsorption pore volume quoted for a MOF in the literature
+    (those use a probe rolled over the vdW surface, a different definition).
+    """
+    from scipy.spatial import cKDTree
+
+    cell = np.array(host.cell, dtype=float)
+    ns = [max(2, int(round(L / spacing))) for L in host.cell.lengths()]
+    grid = np.stack(np.meshgrid(*[np.linspace(0, 1, n, endpoint=False)
+                                  for n in ns], indexing="ij"), axis=-1)
+    points = grid.reshape(-1, 3) @ cell
+
+    pos = np.vstack([host.get_positions() + np.array([i, j, k]) @ cell
+                     for i in (-1, 0, 1) for j in (-1, 0, 1)
+                     for k in (-1, 0, 1)])
+    free = cKDTree(pos).query(points, k=1)[0] > clearance
+    return float(free.mean() * host.cell.volume)
+
+
+def _image_shell(host: Atoms, margin: float) -> Atoms:
+    """Framework atoms of the neighbouring cells lying within `margin` of this
+    one. packmol has no periodic boundaries, so without these a guest could be
+    packed hard against a face and land on top of the wall next door."""
+    cell = np.array(host.cell, dtype=float)
+    L = np.diag(cell)
+    pos, sym = host.get_positions(), np.array(host.get_chemical_symbols())
+    keep_p, keep_s = [], []
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            for k in (-1, 0, 1):
+                if (i, j, k) == (0, 0, 0):
+                    continue
+                p = pos + np.array([i, j, k]) * L
+                m = np.all((p > -margin) & (p < L + margin), axis=1)
+                if m.any():
+                    keep_p.append(p[m])
+                    keep_s.append(sym[m])
+    if not keep_p:
+        return Atoms()
+    return Atoms(symbols=list(np.concatenate(keep_s)),
+                 positions=np.vstack(keep_p))
+
+
+def fill_pores(host: Atoms, guest: Atoms, n: int | None = None,
+               density: float | None = None, tolerance: float = 2.0,
+               workdir: str | Path = "data/work/pores",
+               timeout: int = 900) -> Atoms:
+    """Load `n` copies of `guest` into the pores of a periodic framework.
+
+    The framework is fixed and packmol keeps every guest atom `tolerance` away
+    from it, so the guests end up in the pore network by construction — no
+    pore-finding needed. Guests are packed into the whole cell (minus half a
+    tolerance per side, so periodic images meet at exactly the contact
+    distance) and the neighbouring cells' walls are shown to packmol as fixed
+    atoms, then dropped again.
+
+    n=None loads ~60% of the guest liquid's reference density into the free
+    volume — a showcase load, not an equilibrated or experimental uptake.
+    """
+    import subprocess
+    packmol = find_packmol()
+    if packmol is None:
+        raise RuntimeError("packmol not found on PATH")
+
+    cell = np.array(host.cell, dtype=float)
+    if host.cell.volume < 1e-6:
+        raise ValueError("the host has no cell, so it has no pores to fill. "
+                         "fill_pores needs a periodic framework.")
+    if np.abs(cell - np.diag(np.diag(cell))).max() > 1e-6:
+        raise ValueError(
+            "fill_pores currently handles rectangular cells only (the bundled "
+            "MOFs are cubic); this host's cell is not orthogonal.")
+
+    host = host.copy()
+    host.wrap()
+    L = np.diag(cell)
+    m = tolerance / 2.0
+    free = free_volume_A3(host, clearance=tolerance)
+    if free < 50.0:
+        raise ValueError(
+            f"the framework has only {free:.0f} A^3 of free volume at a "
+            f"{tolerance} A contact distance, too little to pack into. Its "
+            "pores may be too narrow for this guest.")
+
+    name = str(guest.info.get("provenance", {}).get("query", "")).lower()
+    if n is None:
+        rho = density or SOLVENT_DENSITY.get(name, 0.8)
+        molar = float(guest.get_masses().sum())
+        n = max(1, int(0.6 * rho * (free * 1e-24) * _NA / molar))
+        n = min(n, max(1, 8000 // max(1, len(guest))))
+    n = int(n)
+    if n * len(guest) > 10000:
+        raise RuntimeError(
+            f"that would pack {n * len(guest)} guest atoms — beyond the "
+            "current packing limit (~10,000). Use a smaller count, or load a "
+            "single cell and replicate it.")
+
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+    shell = _image_shell(host, tolerance)
+    walls = host + shell
+    host_xyz, guest_xyz = work / "framework.xyz", work / "guest.xyz"
+    out_xyz = work / "loaded.xyz"
+    write(str(host_xyz), walls, format="xyz")
+    write(str(guest_xyz), _centered(guest), format="xyz")
+    inp = work / "fill.inp"
+    inp.write_text(
+        f"tolerance {tolerance}\nfiletype xyz\noutput {out_xyz.name}\n\n"
+        f"structure {host_xyz.name}\n  number 1\n  fixed 0. 0. 0. 0. 0. 0.\n"
+        f"end structure\n\n"
+        f"structure {guest_xyz.name}\n  number {n}\n"
+        f"  inside box {m:.3f} {m:.3f} {m:.3f} "
+        f"{L[0] - m:.3f} {L[1] - m:.3f} {L[2] - m:.3f}\nend structure\n")
+    proc = subprocess.run([packmol], stdin=inp.open(), cwd=work,
+                          capture_output=True, text=True, timeout=timeout)
+    if not out_xyz.exists() or "Success" not in proc.stdout:
+        raise RuntimeError(
+            f"packmol could not fit {n} {name or 'guest'} into the pores. A "
+            f"smaller count will fit.\n{proc.stdout[-800:]}")
+
+    packed = read(str(out_xyz))
+    keep = list(range(len(host))) + list(range(len(walls), len(packed)))
+    loaded = packed[keep]                     # drop the borrowed image walls
+    loaded.set_cell(cell)
+    loaded.set_pbc(True)
+    loaded.info["packmol_inp"] = inp.read_text()
+    loaded.info["solute_atoms"] = len(host)   # framework renders solid
+    prov = host.info.get("provenance", {})
+    loaded.info["provenance"] = prov
+    loaded.info["assembly"] = {
+        "relation": "inside", "mode": "fill_pores", "n_guests": n,
+        "host_atoms": len(host), "guest_atoms": len(guest),
+        "free_volume_A3": round(free, 1),
+        "guests_per_cell": round(n / max(1, np.prod(prov.get("repeat", [1]))), 2),
+        "window_A": prov.get("window_A"),
+    }
+    return loaded
 
 
 def _is_slab(atoms: Atoms) -> bool:
@@ -557,13 +720,16 @@ def combine_template_multi(relations: list, by_key: dict) -> str:
                 host = "atoms" if rel["host"] in consumed else rel["host"]
                 add(combine_template(rel["kind"], host, rel["guest"],
                                      by_key[rel["guest"]]["builder"],
-                                     rel.get("params") or {}))
+                                     rel.get("params") or {},
+                                     host_builder=(by_key.get(rel["host"]) or {})
+                                     .get("builder")))
                 consumed.add(rel["host"])
     return "\n".join(imports + lines)
 
 
 def combine_template(kind: str, host_key: str, guest_key: str,
-                     guest_builder: str, params: dict) -> str:
+                     guest_builder: str, params: dict,
+                     host_builder: str | None = None) -> str:
     """Canonical assembly snippet. Constituent keys are variables in the exec namespace."""
     n = params.get("count") or params.get("n")
     try:
@@ -572,6 +738,9 @@ def combine_template(kind: str, host_key: str, guest_key: str,
         n = None
     if kind == "inside":
         n_arg = f", n={int(n)}" if n else ""
+        if host_builder == "mof":      # pores, not a bounding box
+            return ("from mtagent.assemble import fill_pores\n"
+                    f"atoms = fill_pores({host_key}, {guest_key}{n_arg})")
         return ("from mtagent.assemble import fill_inside\n"
                 f"atoms = fill_inside({host_key}, {guest_key}{n_arg})")
     if kind == "around":

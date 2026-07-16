@@ -46,6 +46,14 @@ GENERIC_COMPOUNDS = (
     ({"gan", "gallium nitride"}, "gan"),
     ({"mos2", "molybdenum disulfide", "molybdenum disulphide"}, "mos2"),
 )
+# metal-organic frameworks: aliases -> nanostructures.MOFS key. Names are
+# matched with punctuation stripped, so "ZIF-8", "zif8" and "zif 8" all land.
+MOF_ALIASES = (
+    ({"zif-8", "zif8", "zif 8", "zeolitic imidazolate framework-8",
+      "zeolitic imidazolate framework 8", "methylimidazolate framework"},
+     "zif8"),
+)
+
 SHEETS = (({"graphene", "graphite sheet"}, "graphene"),
           ({"h-bn", "hbn", "boron nitride", "hexagonal boron nitride"}, "hbn"))
 METALS = {"gold": "Au", "silver": "Ag", "copper": "Cu", "platinum": "Pt",
@@ -155,6 +163,8 @@ def normalize_material(spec: dict) -> None:
 
 def _t_nanoparticle(spec: dict) -> str:
     spec = dict(spec)
+    _refuse_mof(spec.get("material") or spec.get("element") or "",
+                "nanoparticle")
     normalize_material(spec)
     d = _num(spec.get("diameter"), 40.0)
     if d < 8.0:
@@ -288,12 +298,38 @@ COMPOUND_CELLS = ((TITANIA, "nanostructures", "build_rutile"),
                   (OXIDES, "wulff", "build_spinel"))
 
 
+def _refuse_mof(material: str, what: str) -> None:
+    """MOF terminations are a research problem, not plain geometry."""
+    ml = str(material).lower()
+    for names, key in MOF_ALIASES:
+        if any(t in ml for t in names):
+            raise ValueError(
+                f"{material} is a metal-organic framework, and cutting a "
+                f"{what} out of one would slice through the covalent linkers "
+                "that hold it together. Modelling that termination is a "
+                "research problem, not plain geometry, so this agent does not "
+                "do it. Ask for the framework itself and load its pores "
+                f"instead, e.g. \"{material} with water inside\".")
+
+
+def _t_mof(spec: dict) -> str:
+    name = str(spec.get("name") or spec.get("material")
+               or spec.get("element") or "ZIF-8")
+    rep = re.findall(r"\d+", str(spec.get("repeat") or "1x1x1"))
+    rep = (rep + rep[-1:] * 2)[:3] if rep else ["1", "1", "1"]
+    return ("from mtagent.nanostructures import build_mof\n"
+            f'atoms = build_mof("{name}", repeat=({", ".join(rep)}))')
+
+
 def _t_bulk(spec: dict) -> str:
     material = str(spec.get("element") or spec.get("material") or "")
     rep = re.findall(r"\d+", str(spec.get("repeat") or "2x2x2"))
     rep = (rep + rep[-1:] * 2)[:3] if rep else ["2", "2", "2"]
     rep_t = "(" + ", ".join(rep) + ")"
     ml = material.lower()
+    for names, key in MOF_ALIASES:         # "a ZIF-8 crystal" is a framework,
+        if any(t in ml for t in names):    # not an element or a dense compound
+            return _t_mof({"name": key, "repeat": spec.get("repeat") or "1x1x1"})
     for names, kind in SHEETS:              # "a graphene sheet" parses as bulk
         if any(t in ml for t in names):
             return ("from mtagent.nanostructures import build_sheet\n"
@@ -319,6 +355,7 @@ def _t_bulk(spec: dict) -> str:
 
 def _t_surface_slab(spec: dict) -> str:
     material = str(spec.get("element") or spec.get("material") or "")
+    _refuse_mof(material, "surface slab")
     digits = [int(c) for c in re.findall(r"\d", str(spec.get("miller") or "111"))]
     if len(digits) == 4:            # hexagonal Miller-Bravais (hkil): i = -(h+k)
         digits = [digits[0], digits[1], digits[3]]
@@ -431,6 +468,19 @@ BUILDERS: dict[str, Builder] = {b.name: b for b in (
          Param("density", "float",
                help="g/cm³; defaults to the liquid's literature reference density")),
         _t_solvent_box),
+    Builder(
+        "mof", "Metal-organic framework: a periodic porous cell from a "
+        "published CIF, pores empty. Guests are loaded with an inside relation "
+        "(they land in the pores). Available: ZIF-8.",
+        (Param("name", "str", required=True,
+               ask="Which MOF? (available: ZIF-8)",
+               help="framework name; ZIF-8 is zinc 2-methylimidazolate, "
+                    "sodalite topology, 11.6 Å cages behind 3.4 Å windows"),
+         Param("repeat", "str", default="1x1x1",
+               ask="How many cells? (NxMxK; default 1x1x1 = one 276-atom cell)",
+               help="conventional cells along a, b, c; one ZIF-8 cell is "
+                    "16.99 Å and 276 atoms")),
+        _t_mof),
     Builder(
         "bulk", "Bulk crystal (periodic supercell of the conventional cell — "
         "no surfaces, no vacuum): any element or magnetite/titania/silica/zinc oxide.",

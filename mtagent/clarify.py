@@ -309,7 +309,9 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     _drop_uninvited_count(state, text)
     _apply_np_size_hint(state, text)
     _bulk_vs_slab_hint(state, text)
+    mof_note = _apply_mof_hint(state, text)
     note = resolve_molecule_names(state, model=model)
+    note = " ".join(n for n in (mof_note, note) if n)
     if note:
         state["notes"] = note
     return state
@@ -420,6 +422,44 @@ def resolve_molecule_names(state: dict, model: str = DEFAULT_MODEL) -> str | Non
                 + (f". Did you mean one of these: {hint}?" if hint
                    else ". Please check the spelling, or give its PubChem CID "
                         "as a number."))
+    return " ".join(dict.fromkeys(notes)) or None
+
+
+def _apply_mof_hint(state: dict, query: str) -> str | None:
+    """A named framework is a MOF, whatever builder the LLM reached for.
+
+    'ZIF-8' looks like a material name, so the parse routes it to bulk (or
+    even nanoparticle) and the element lookup then fails on it. The framework
+    catalog is the ground truth here, so any constituent naming one is moved
+    to the mof builder with its repeat kept.
+
+    Returns a note when the framework was CHOSEN rather than asked for: the
+    parse LLM fills a name from the catalog even when the user only said
+    "a MOF", and picking one silently is exactly the kind of invented default
+    this pipeline reports instead of hiding.
+    """
+    from .registry import MOF_ALIASES
+
+    notes = []
+    for c in state.get("constituents", []):
+        spec = c.get("spec") or {}
+        named = " ".join(str(spec.get(k, "")) for k in
+                         ("name", "material", "element", "shape")).lower()
+        if c.get("builder") == "molecule":     # a guest, not the host
+            continue
+        hit = next((key for aliases, key in MOF_ALIASES
+                    if any(a in named for a in aliases)), None)
+        if hit is None and c.get("builder") != "mof":
+            continue
+        key = hit or "zif8"
+        c["builder"] = "mof"
+        c["spec"] = {"name": key, **({"repeat": spec["repeat"]}
+                                     if spec.get("repeat") else {})}
+        asked_for = any(a in query.lower()
+                        for aliases, _ in MOF_ALIASES for a in aliases)
+        if not asked_for:
+            notes.append("You did not name a framework, so I used ZIF-8, the "
+                         "only one available so far.")
     return " ".join(dict.fromkeys(notes)) or None
 
 
@@ -757,7 +797,8 @@ def _strip_uninvited_repeat(state: dict, text: str, keep: dict | None = None) ->
 _BUILDER_NOUNS = {"surface": "surface_slab", "slab": "surface_slab",
                   "nanoparticle": "nanoparticle", "np": "nanoparticle",
                   "nanotube": "nanotube", "cnt": "nanotube",
-                  "bulk": "bulk", "crystal": "bulk"}
+                  "bulk": "bulk", "crystal": "bulk",
+                  "mof": "mof", "framework": "mof", "zif": "mof"}
 
 
 def _new_system_hint(state: dict, message: str) -> bool:

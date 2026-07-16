@@ -6,6 +6,8 @@ caller's responsibility; a mismatch raises).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 from ase import Atoms
 from ase.build import nanotube, bulk, surface, stack
@@ -402,6 +404,66 @@ def build_compound_slab(name: str, miller=(0, 0, 1), thickness: float = 10.0,
                            vacuum, layers, nx, ny)
     slab.info["provenance"]["material"] = COMPOUND_CRYSTALS[key]["label"]
     return slab
+
+
+# --- metal-organic frameworks ------------------------------------------------
+
+# MOF cells are far too large to hand-type (ZIF-8 is 276 atoms) and their
+# linker hydrogens are routinely disordered in the refined data, so these come
+# from published CIFs bundled in data/mofs/ — see scripts/prepare_mofs.py for
+# how each file was derived and verified. `pore_A`/`window_A` are the cavity
+# and its aperture: a guest wider than the window cannot physically diffuse in.
+MOFS: dict = {
+    "zif8": dict(file="ZIF-8.cif",
+                 label="ZIF-8 (zinc 2-methylimidazolate, sodalite)",
+                 formula="C96H120N48Zn12", pore_A=11.6, window_A=3.4,
+                 source="Park et al., PNAS 103, 10186 (2006); CoRE MOF 2019 "
+                        "VELVOY, https://doi.org/10.5281/zenodo.14184621"),
+}
+
+_MOF_DIR = Path(__file__).resolve().parent.parent / "data" / "mofs"
+
+
+def _mof_key(name: str) -> str:
+    """Resolve a MOF alias ('ZIF-8', 'zif 8', 'zeolitic imidazolate') to a key."""
+    n = "".join(ch for ch in str(name).lower() if ch.isalnum())
+    if n in MOFS:
+        return n
+    from .registry import MOF_ALIASES
+    for aliases, key in MOF_ALIASES:
+        if n in {"".join(c for c in a.lower() if c.isalnum()) for a in aliases}:
+            return key
+    raise ValueError(f"unknown MOF {name!r}. Available: "
+                     + ", ".join(sorted(m["label"] for m in MOFS.values())))
+
+
+def build_mof(name: str = "ZIF-8", repeat=(1, 1, 1)) -> Atoms:
+    """Periodic cell of a bundled MOF framework, with empty pores.
+
+    `repeat` is (N, M, K) conventional cells. The framework is returned exactly
+    as published (geometry only, no charges); the pores are empty and can be
+    loaded with guests via assemble.fill_pores.
+    """
+    from ase.io import read
+
+    key = _mof_key(name)
+    d = MOFS[key]
+    atoms = read(str(_MOF_DIR / d["file"]))
+    atoms.set_pbc(True)
+    if atoms.get_chemical_formula() != d["formula"]:      # the bundled file is
+        raise ValueError(                                 # ground truth, verify
+            f"{d['label']} cell is {atoms.get_chemical_formula()}, expected "
+            f"{d['formula']} — data/mofs/{d['file']} is not the published cell")
+    rep = tuple(int(r) for r in repeat)
+    if any(r < 1 for r in rep):
+        raise ValueError(f"repeat must be positive, got {repeat}")
+    atoms = atoms.repeat(rep)
+    atoms.info["provenance"] = {
+        "source": "CoRE MOF (bundled CIF)", "type": "mof", "mof": key,
+        "material": d["label"], "repeat": list(rep), "formula": d["formula"],
+        "pore_diameter_A": d["pore_A"], "window_A": d["window_A"],
+        "reference": d["source"], "n_atoms": len(atoms)}
+    return atoms
 
 
 def build_sheet(kind: str = "graphene", width: float = 25.0,
