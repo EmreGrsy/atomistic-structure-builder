@@ -309,7 +309,118 @@ def parse_query(query: str, model: str = DEFAULT_MODEL) -> dict:
     _drop_uninvited_count(state, text)
     _apply_np_size_hint(state, text)
     _bulk_vs_slab_hint(state, text)
+    note = resolve_molecule_names(state, model=model)
+    if note:
+        state["notes"] = note
     return state
+
+
+_MOLECULE_FIX_SYSTEM = (
+    "You correct misspelled CHEMICAL names. Given a name a user typed, return "
+    "the standard names a chemist would search PubChem with. Order them best "
+    "guess first, at most 3. Use common or IUPAC names (e.g. 'cannabidiol', "
+    "not 'CBD oil'). If the name is already standard, return it unchanged. If "
+    "you cannot tell what molecule is meant, return an empty list. Never "
+    "invent a molecule that does not exist. "
+    'Reply as JSON: {"candidates": ["...", "..."]}'
+)
+
+
+def _molecule_candidates(name: str, model: str = DEFAULT_MODEL) -> list[str]:
+    """LLM guesses at what a typo'd molecule name was meant to be."""
+    if not have_openai_key():
+        return []
+    try:
+        out = chat_json([{"role": "user", "content": f"Name typed: {name}"}],
+                        _MOLECULE_FIX_SYSTEM, model=model)
+    except Exception:
+        return []
+    cands = out.get("candidates") or []
+    return [str(c) for c in cands if str(c).strip()][:3]
+
+
+# every spec field whose value is handed to pubchem.get_molecule — add a pair
+# here and the name gets the same grounding as all the others
+_PUBCHEM_FIELDS = (("molecule", "name"), ("solvent_box", "molecule"))
+
+
+def _describe(cid: int, fallback: str) -> dict:
+    from .pubchem import compound_info
+    try:
+        return compound_info(cid)
+    except Exception:
+        return {"cid": cid, "title": fallback, "formula": ""}
+
+
+def _identity(info: dict) -> str:
+    detail = f"PubChem CID {info['cid']}"
+    if info.get("formula"):
+        detail += f", {info['formula']}"
+    return detail
+
+
+def resolve_molecule_names(state: dict, model: str = DEFAULT_MODEL) -> str | None:
+    """Ground every molecule name in the spec against PubChem.
+
+    The LLM knows 'cannoaboild' means cannabidiol; PubChem knows whether a
+    name is real. So the LLM only ever PROPOSES a correction and PubChem's CID
+    lookup decides — a guess that does not resolve is never written into the
+    spec, and an unresolvable name is reported with candidates rather than
+    quietly swapped for something plausible.
+
+    A name PubChem accepts can still be a surprise ('cannabinoid' is a whole
+    class and lands on caryophyllene), so whenever the matched compound is not
+    what the user typed we say which molecule was actually used.
+    """
+    from .pubchem import UnknownCompound, name_to_cid
+
+    notes: list[str] = []
+    for c in state.get("constituents", []):
+        field = dict(_PUBCHEM_FIELDS).get(c.get("builder"))
+        if not field:
+            continue
+        name = str(c["spec"].get(field) or "").strip()
+        if not name:
+            continue
+        try:
+            cid = name_to_cid(name)
+        except UnknownCompound as unknown:
+            # python unbinds `unknown` at the end of this block, so keep it
+            suggestions = list(unknown.suggestions)
+        except Exception:
+            continue                       # network down: let the build report it
+        else:                              # real name: say what it resolved to
+            info = _describe(cid, name)
+            title = info.get("title") or ""
+            if title and title.strip().lower() != name.lower():
+                notes.append(f"{name!r} is {title} on PubChem "
+                             f"({_identity(info)}), and that is what I used.")
+            continue
+
+        fixed = None
+        for cand in _molecule_candidates(name, model=model):
+            if cand.strip().lower() == name.lower():
+                continue
+            try:
+                cid = name_to_cid(cand)    # PubChem is the gate, not the LLM
+            except Exception:
+                continue
+            fixed = (cand, _describe(cid, cand))
+            break
+
+        if fixed:
+            cand, info = fixed
+            c["spec"][field] = cand
+            notes.append(f"I read {name!r} as {info.get('title') or cand} "
+                         f"({_identity(info)}).")
+        else:
+            hint = ", ".join(suggestions[:3])
+            notes.append(
+                f"I could not find a molecule called {name!r} on PubChem"
+                + (f". Did you mean one of these: {hint}?" if hint
+                   else ". Please check the spelling, or give its PubChem CID "
+                        "as a number."))
+    return " ".join(dict.fromkeys(notes)) or None
 
 
 def _bulk_vs_slab_hint(state: dict, query: str) -> None:
@@ -418,6 +529,8 @@ def respond(state: dict, message: str, gap: Gap | None = None, context: str = ""
         _apply_repeat_hint(new_state, text)
         _apply_facet_hint(new_state, text)
         note = _apply_gamma_hint(new_state, text)
+        mol_note = resolve_molecule_names(new_state, model=model)
+        note = " ".join(n for n in (note, mol_note) if n) or None
         _apply_nparticles_hint(new_state, text)
         _apply_add_count_hint(state, new_state, text)
         _strip_uninvited_repeat(new_state, text,

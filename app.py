@@ -478,6 +478,8 @@ def parse_fresh(prompt: str, sb) -> None:
                             f"({', '.join(BUILDERS)}). Try naming the structures "
                             "directly, e.g. *\"a carbon nanotube with methanol\"*."})
         return
+    if state.get("notes"):        # e.g. a molecule name grounded on PubChem
+        SS.messages.append({"role": "assistant", "content": state["notes"]})
     names = ", ".join(c["key"] for c in state["constituents"])
     sb.write(f"Constituents: **{names}**")
     sb.write("Retrieving knowledge graph evidence, writing and validating "
@@ -525,6 +527,9 @@ if prompt:
                                        "The spec stays as shown above."})
                     else:
                         sb.write("Applying changes…")
+                        if r.get("note"):   # say what was corrected, even
+                            SS.messages.append(    # though the spec changed
+                                {"role": "assistant", "content": r["note"]})
                         refresh(r["state"])
                 elif r["intent"] == "edit":
                     SS.messages.append({"role": "assistant", "content":
