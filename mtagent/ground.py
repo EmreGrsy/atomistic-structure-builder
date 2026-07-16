@@ -97,6 +97,50 @@ def relations_of(state: dict) -> list:
     return rels
 
 
+def pore_fit_problem(state: dict) -> str | None:
+    """Is a guest simply too big for its framework host? Answered from the spec.
+
+    Both sides are known before anything is built: the framework's cage size
+    comes from its catalog entry and the guest's size from its PubChem
+    coordinates. So say it up front instead of building a 2000 atom framework,
+    fetching the molecule and only then failing at the combining step.
+
+    Returns None when it fits, when there is no framework host, or when the
+    answer is not knowable here (no network, unknown guest) — never guesses.
+    """
+    from .assemble import guest_extents_A
+    from .nanostructures import MOFS, _mof_key
+
+    by_key = {c["key"]: c for c in state.get("constituents", [])}
+    for rel in relations_of(state):
+        if rel.get("kind") != "inside":
+            continue
+        host, guest = by_key.get(rel.get("host")), by_key.get(rel.get("guest"))
+        if not host or not guest or host.get("builder") != "mof":
+            continue
+        if guest.get("builder") != "molecule":
+            continue
+        try:
+            mof = MOFS[_mof_key(host["spec"].get("name") or "")]
+            from .pubchem import get_molecule
+            size = float(guest_extents_A(get_molecule(
+                str(guest["spec"].get("name") or "")))[2])
+        except Exception:
+            return None            # unknown or offline: let the build report it
+        cage = mof.get("pore_A")
+        if cage and size > cage:
+            label = mof["label"].split(" (")[0]
+            return (f"{guest['key']} is {size:.1f} Å along its longest axis "
+                    f"and the cages of {label} are about {cage} Å across, so "
+                    f"it will not fit inside at any count. {label} holds small "
+                    "guests: water, CO2, methanol, ethanol, benzene. A "
+                    "molecule this size needs a framework with larger pores, "
+                    "and stretching this one is not an option: its pore size "
+                    "is set by its linker, so widening the cell would pull the "
+                    "bonds apart into a material that does not exist.")
+    return None
+
+
 def evidence_for_relation(state: dict) -> Evidence | None:
     rels = relations_of(state)
     if not rels:

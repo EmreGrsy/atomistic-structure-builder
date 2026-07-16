@@ -227,7 +227,9 @@ def spec_problem(state: dict) -> str | None:
             BUILDERS[c["builder"]].template(c["spec"])
     except ValueError as e:
         return str(e)
-    return None
+    # relations have physical limits too, and a guest that cannot fit its
+    # framework is knowable from the spec — no need to build to find out
+    return ground.pore_fit_problem(final)
 
 
 def refresh(state: dict) -> None:
@@ -312,6 +314,11 @@ def qa_context() -> str:
 
 
 def build_all() -> None:
+    blocked = ground.pore_fit_problem(SS.final)
+    if blocked:      # knowable from the spec: do not build 2000 atoms to fail
+        SS.messages.append({"role": "assistant",
+                            "content": f"That won't build: {blocked}"})
+        return
     results, rels = {}, ground.relations_of(SS.final)
     with st.status("Building the structures…", expanded=True) as sb:
         for c in SS.final["constituents"]:
@@ -485,6 +492,10 @@ def parse_fresh(prompt: str, sb) -> None:
         return
     if state.get("notes"):        # e.g. a molecule name grounded on PubChem
         SS.messages.append({"role": "assistant", "content": state["notes"]})
+    problem = spec_problem(state)
+    if problem:      # say it now, not after a build the spec already rules out
+        SS.messages.append({"role": "assistant",
+                            "content": f"Heads up, this won't build: {problem}"})
     names = ", ".join(c["key"] for c in state["constituents"])
     sb.write(f"Constituents: **{names}**")
     sb.write("Retrieving knowledge graph evidence, writing and validating "

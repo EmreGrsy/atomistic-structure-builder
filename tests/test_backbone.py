@@ -187,6 +187,20 @@ def test_guest_too_big_for_the_cages_is_refused():
     assert len(guest_extents_A(Atoms("N2", positions=[[0, 0, 0], [0, 0, 1.1]]))) == 3
 
 
+def test_guest_too_big_is_caught_from_the_spec_before_building():
+    """Both sizes are known before any build: say so instead of building a
+    2000 atom framework, fetching the guest, then failing at the combine."""
+    state = {"constituents": [
+        {"key": "zif8", "builder": "mof", "spec": {"name": "zif8"}},
+        {"key": "thc", "builder": "molecule", "spec": {"name": "THC"}}],
+        "relations": [{"kind": "inside", "host": "zif8", "guest": "thc",
+                       "params": {}}]}
+    assert "will not fit" in (ground.pore_fit_problem(state) or "")
+
+    state["constituents"][1]["spec"]["name"] = "water"     # this one does fit
+    assert ground.pore_fit_problem(state) is None
+
+
 @pytest.mark.skipif(shutil.which("moltemplate.sh") is None,
                     reason="moltemplate not installed")
 def test_cluster_via_moltemplate_gate1_gate2():
